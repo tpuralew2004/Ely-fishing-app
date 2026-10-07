@@ -26,11 +26,25 @@ type Catch = {
   created_at: string;
 };
 
+const colors = {
+  navy: "#071827",
+  deepNavy: "#050B10",
+  lakeBlue: "#1E78B7",
+  sunsetOrange: "#FF7043",
+  sunYellow: "#FFC83D",
+  dockBrown: "#8B5A2B",
+  loonWhite: "#F5F7F7",
+};
+
 export default function Home() {
   const [catches, setCatches] = useState<Catch[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPost, setShowPost] = useState(false);
   const [posting, setPosting] = useState(false);
+
+  const [accessGranted, setAccessGranted] = useState(false);
+  const [familyCode, setFamilyCode] = useState("");
+  const [codeError, setCodeError] = useState("");
 
   const [name, setName] = useState("");
   const [fishSpecies, setFishSpecies] = useState("");
@@ -49,50 +63,48 @@ export default function Home() {
       .order("created_at", { ascending: false });
 
     if (!error && data) {
-      const updatedCatches = await Promise.all(
-        data.map(async (item) => {
-          if (!item.image_url) return item;
-
-          try {
-            const url = new URL(item.image_url);
-            const marker = "/private/";
-            const markerIndex = url.pathname.indexOf(marker);
-
-            if (markerIndex === -1) return item;
-
-            const filePath = url.pathname.substring(
-              markerIndex + 1
-            );
-
-            const { data: signedData } =
-              await supabase.storage
-                .from("catch-photos")
-                .createSignedUrl(filePath, 60 * 60 * 24);
-
-            return {
-              ...item,
-              image_url:
-                signedData?.signedUrl || item.image_url,
-            };
-          } catch {
-            return item;
-          }
-        })
-      );
-
-      setCatches(updatedCatches);
+      setCatches(data);
     }
 
     setLoading(false);
   }
 
   useEffect(() => {
-    loadCatches();
+    const hasAccess =
+      localStorage.getItem("ely-fishing-family-access") === "granted";
+
+    if (hasAccess) {
+      setAccessGranted(true);
+    } else {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    if (accessGranted) {
+      loadCatches();
+    }
+  }, [accessGranted]);
+
+  function unlockSite() {
+    if (familyCode.trim() === "Nofireplease123") {
+      localStorage.setItem(
+        "ely-fishing-family-access",
+        "granted"
+      );
+
+      setAccessGranted(true);
+      setCodeError("");
+    } else {
+      setCodeError("That family code is incorrect.");
+    }
+  }
 
   async function postCatch() {
     if (!name || !fishSpecies || !length || !lake) {
-      alert("Please enter your name, fish species, length, and lake.");
+      alert(
+        "Please enter your name, fish species, length, and lake."
+      );
       return;
     }
 
@@ -102,7 +114,8 @@ export default function Home() {
       let imageUrl: string | null = null;
 
       if (photo) {
-        const extension = photo.name.split(".").pop() || "jpg";
+        const extension =
+          photo.name.split(".").pop() || "jpg";
 
         const fileName = `${Date.now()}-${Math.random()
           .toString(36)
@@ -110,31 +123,39 @@ export default function Home() {
 
         const filePath = `private/${fileName}`;
 
-        const { error: uploadError } = await supabase.storage
-          .from("catch-photos")
-          .upload(filePath, photo);
+        const { error: uploadError } =
+          await supabase.storage
+            .from("catch-photos")
+            .upload(filePath, photo);
 
         if (uploadError) throw uploadError;
 
-        const { data: signedData, error: signedError } =
-          await supabase.storage
-            .from("catch-photos")
-            .createSignedUrl(filePath, 60 * 60 * 24 * 365);
+        const {
+          data: signedData,
+          error: signedError,
+        } = await supabase.storage
+          .from("catch-photos")
+          .createSignedUrl(
+            filePath,
+            60 * 60 * 24 * 365
+          );
 
         if (signedError) throw signedError;
 
         imageUrl = signedData.signedUrl;
       }
 
-      const { error } = await supabase.from("catches").insert({
-        name,
-        fish_species: fishSpecies,
-        length: Number(length),
-        weight: weight ? Number(weight) : null,
-        lake,
-        caption: caption || null,
-        image_url: imageUrl,
-      });
+      const { error } = await supabase
+        .from("catches")
+        .insert({
+          name,
+          fish_species: fishSpecies,
+          length: Number(length),
+          weight: weight ? Number(weight) : null,
+          lake,
+          caption: caption || null,
+          image_url: imageUrl,
+        });
 
       if (error) throw error;
 
@@ -157,6 +178,59 @@ export default function Home() {
     setPosting(false);
   }
 
+  if (!accessGranted) {
+    return (
+      <main style={styles.accessPage}>
+        <div style={styles.accessCard}>
+          <div style={styles.accessIcon}>
+            <Fish size={32} />
+          </div>
+
+          <div style={styles.eyebrow}>
+            ELY FISHING
+          </div>
+
+          <h1 style={styles.accessTitle}>
+            Family Access
+          </h1>
+
+          <p style={styles.accessText}>
+            This fishing board is for the family.
+          </p>
+
+          <input
+            type="password"
+            value={familyCode}
+            onChange={(e) => {
+              setFamilyCode(e.target.value);
+              setCodeError("");
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                unlockSite();
+              }
+            }}
+            placeholder="Enter family code"
+            style={styles.accessInput}
+          />
+
+          {codeError && (
+            <p style={styles.accessError}>
+              {codeError}
+            </p>
+          )}
+
+          <button
+            onClick={unlockSite}
+            style={styles.accessButton}
+          >
+            Enter Family Site
+          </button>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main style={styles.page}>
       {/* ================= HERO ================= */}
@@ -172,24 +246,17 @@ export default function Home() {
                 FAMILY FISHING TRIP
               </div>
 
-              <h1 style={styles.title}>Ely Fishing</h1>
+              <h1 style={styles.title}>
+                Ely Fishing
+              </h1>
 
               <p style={styles.subtitle}>
                 White Iron Lake • Minnesota
               </p>
             </div>
 
-            <div style={styles.logoCircle}>
-              <img
-                src="/loon-logo.png.png"
-                alt="Ely Fishing loon logo"
-                style={{
-                  width: "110px",
-                  height: "110px",
-                  objectFit: "cover",
-                  borderRadius: "18px",
-                }}
-              />
+            <div style={styles.fishLogo}>
+              <Fish size={26} />
             </div>
           </div>
 
@@ -239,7 +306,7 @@ export default function Home() {
 
           <Fish
             size={30}
-            color="#f4b83f"
+            color={colors.sunYellow}
           />
         </div>
 
@@ -253,7 +320,7 @@ export default function Home() {
           <div style={styles.emptyCard}>
             <Fish
               size={42}
-              color="#f4b83f"
+              color={colors.sunYellow}
             />
 
             <h3>No catches yet</h3>
@@ -292,7 +359,7 @@ export default function Home() {
 
                   <Fish
                     size={23}
-                    color="#f4b83f"
+                    color={colors.sunYellow}
                   />
                 </div>
 
@@ -352,7 +419,7 @@ export default function Home() {
           <div style={styles.tripHeader}>
             <Trophy
               size={25}
-              color="#f4b83f"
+              color={colors.sunYellow}
             />
 
             <h2>Trip Stats</h2>
@@ -369,9 +436,11 @@ export default function Home() {
 
             <div>
               <strong>
-                {new Set(
-                  catches.map((c) => c.name)
-                ).size}
+                {
+                  new Set(
+                    catches.map((c) => c.name)
+                  ).size
+                }
               </strong>
 
               <span>FISHERMEN</span>
@@ -427,7 +496,9 @@ export default function Home() {
               </div>
 
               <button
-                onClick={() => setShowPost(false)}
+                onClick={() =>
+                  setShowPost(false)
+                }
                 style={styles.closeButton}
               >
                 <X size={21} />
@@ -542,10 +613,96 @@ const styles: Record<
   string,
   React.CSSProperties
 > = {
+  accessPage: {
+    minHeight: "100vh",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "24px",
+    boxSizing: "border-box",
+    background:
+      "linear-gradient(135deg, #050B10 0%, #071827 55%, #12344A 100%)",
+    color: colors.loonWhite,
+    fontFamily:
+      "Arial, Helvetica, sans-serif",
+  },
+
+  accessCard: {
+    width: "100%",
+    maxWidth: "420px",
+    padding: "32px 24px",
+    borderRadius: "24px",
+    textAlign: "center",
+    background:
+      "rgba(7,24,39,0.92)",
+    border:
+      "1px solid rgba(255,255,255,0.13)",
+    boxShadow:
+      "0 20px 60px rgba(0,0,0,0.35)",
+    backdropFilter: "blur(16px)",
+  },
+
+  accessIcon: {
+    width: "64px",
+    height: "64px",
+    margin: "0 auto 18px",
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: colors.sunYellow,
+    color: colors.deepNavy,
+  },
+
+  accessTitle: {
+    margin: "8px 0",
+    fontSize: "32px",
+    fontWeight: 900,
+  },
+
+  accessText: {
+    margin: "0 0 22px",
+    color:
+      "rgba(255,255,255,0.65)",
+    fontSize: "14px",
+  },
+
+  accessInput: {
+    boxSizing: "border-box",
+    width: "100%",
+    padding: "15px",
+    borderRadius: "13px",
+    border:
+      "1px solid rgba(255,255,255,0.12)",
+    background: colors.deepNavy,
+    color: colors.loonWhite,
+    fontSize: "16px",
+    outline: "none",
+    marginBottom: "10px",
+  },
+
+  accessError: {
+    margin: "0 0 10px",
+    color: "#FF8A80",
+    fontSize: "13px",
+  },
+
+  accessButton: {
+    width: "100%",
+    padding: "15px",
+    border: "none",
+    borderRadius: "13px",
+    background: colors.sunsetOrange,
+    color: colors.loonWhite,
+    fontSize: "15px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+
   page: {
     minHeight: "100vh",
-    background: "#06151a",
-    color: "#fff",
+    background: colors.deepNavy,
+    color: colors.loonWhite,
     paddingBottom: "90px",
     fontFamily:
       "Arial, Helvetica, sans-serif",
@@ -587,7 +744,7 @@ const styles: Record<
   },
 
   eyebrow: {
-    color: "#f4b83f",
+    color: colors.sunYellow,
     fontSize: "11px",
     fontWeight: 900,
     letterSpacing: "3px",
@@ -604,18 +761,23 @@ const styles: Record<
   subtitle: {
     margin: "11px 0 0",
     fontSize: "15px",
-    color: "rgba(255,255,255,0.75)",
+    color:
+      "rgba(255,255,255,0.75)",
   },
 
-  logoCircle: {
-    width: "110px",
-    height: "110px",
-    borderRadius: "18px",
-    overflow: "hidden",
+  fishLogo: {
+    width: "52px",
+    height: "52px",
+    borderRadius: "50%",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    background:
+      "rgba(0,0,0,0.35)",
     border:
       "1px solid rgba(255,255,255,0.2)",
-    boxShadow:
-      "0 12px 30px rgba(0,0,0,0.3)",
+    color: colors.sunYellow,
+    backdropFilter: "blur(10px)",
   },
 
   locationCard: {
@@ -626,7 +788,7 @@ const styles: Record<
     padding: "17px",
     borderRadius: "20px",
     background:
-      "rgba(10,20,25,0.65)",
+      "rgba(7,24,39,0.72)",
     border:
       "1px solid rgba(255,255,255,0.18)",
     backdropFilter: "blur(15px)",
@@ -641,8 +803,8 @@ const styles: Record<
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    background: "#f4b83f",
-    color: "#101820",
+    background: colors.sunYellow,
+    color: colors.deepNavy,
   },
 
   locationTitle: {
@@ -667,13 +829,13 @@ const styles: Record<
     alignItems: "center",
     justifyContent: "center",
     gap: "10px",
-    background: "#f4b83f",
-    color: "#101820",
+    background: colors.sunsetOrange,
+    color: colors.loonWhite,
     fontSize: "17px",
     fontWeight: 900,
     cursor: "pointer",
     boxShadow:
-      "0 10px 30px rgba(244,184,63,0.25)",
+      "0 10px 30px rgba(255,112,67,0.28)",
   },
 
   feed: {
@@ -690,7 +852,7 @@ const styles: Record<
   },
 
   sectionEyebrow: {
-    color: "#f4b83f",
+    color: colors.sunYellow,
     fontSize: "10px",
     fontWeight: 900,
     letterSpacing: "3px",
@@ -724,7 +886,7 @@ const styles: Record<
     marginBottom: "18px",
     borderRadius: "22px",
     background:
-      "rgba(11,27,34,0.82)",
+      "rgba(7,24,39,0.88)",
     border:
       "1px solid rgba(255,255,255,0.12)",
     boxShadow:
@@ -749,7 +911,7 @@ const styles: Record<
   },
 
   catchPerson: {
-    color: "#f4b83f",
+    color: colors.sunYellow,
     fontSize: "13px",
     fontWeight: 800,
   },
@@ -817,7 +979,7 @@ const styles: Record<
     padding: "22px",
     borderRadius: "23px",
     background:
-      "linear-gradient(145deg, rgba(26,49,57,0.85), rgba(7,20,25,0.9))",
+      "linear-gradient(145deg, rgba(30,120,183,0.20), rgba(5,11,16,0.92))",
     border:
       "1px solid rgba(255,255,255,0.13)",
     backdropFilter: "blur(12px)",
@@ -849,7 +1011,7 @@ const styles: Record<
     alignItems: "center",
     gap: "55px",
     background:
-      "rgba(3,13,18,0.94)",
+      "rgba(5,11,16,0.96)",
     borderTop:
       "1px solid rgba(255,255,255,0.12)",
     backdropFilter: "blur(18px)",
@@ -858,7 +1020,7 @@ const styles: Record<
   navActive: {
     border: "none",
     background: "transparent",
-    color: "#f4b83f",
+    color: colors.sunYellow,
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
@@ -897,7 +1059,7 @@ const styles: Record<
     padding: "24px 20px 30px",
     borderRadius:
       "25px 25px 0 0",
-    background: "#0a2028",
+    background: colors.navy,
     border:
       "1px solid rgba(255,255,255,0.13)",
   },
@@ -931,15 +1093,16 @@ const styles: Record<
     borderRadius: "13px",
     border:
       "1px solid rgba(255,255,255,0.1)",
-    background: "#06151a",
-    color: "#fff",
+    background: colors.deepNavy,
+    color: colors.loonWhite,
     fontSize: "15px",
     outline: "none",
   },
 
   twoInputs: {
     display: "grid",
-    gridTemplateColumns: "1fr 1fr",
+    gridTemplateColumns:
+      "1fr 1fr",
     gap: "10px",
   },
 
@@ -951,8 +1114,8 @@ const styles: Record<
     gap: "8px",
     borderRadius: "13px",
     border:
-      "1px dashed rgba(244,184,63,0.5)",
-    color: "#f4b83f",
+      "1px dashed rgba(255,112,67,0.55)",
+    color: colors.sunYellow,
     cursor: "pointer",
   },
 
@@ -960,8 +1123,8 @@ const styles: Record<
     padding: "15px",
     border: "none",
     borderRadius: "13px",
-    background: "#f4b83f",
-    color: "#101820",
+    background: colors.sunsetOrange,
+    color: colors.loonWhite,
     fontSize: "15px",
     fontWeight: 900,
     cursor: "pointer",
