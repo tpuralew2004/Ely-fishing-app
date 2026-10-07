@@ -521,7 +521,7 @@ const styles: Record<
     position: "absolute",
     inset: 0,
     backgroundImage:
-      "url('/minnesota-sunset.jpg')",
+      "url('/minnesota-sunset.jpg.png')",
     backgroundSize: "cover",
     backgroundPosition: "center",
   },
