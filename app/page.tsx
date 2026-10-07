@@ -116,7 +116,7 @@ export default function Home() {
 
       const { error } = await supabase.from("catches").insert({
         name,
-        fish,
+        fish_species: fish,
         length,
         weight,
         lake,
