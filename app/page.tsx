@@ -11,12 +11,13 @@ import {
   MessageCircle,
   X,
   Plus,
+  Trash2,
   ChevronLeft,
   ChevronRight,
   ZoomIn,
   ZoomOut,
-  Images,
-  Sparkles,
+  RotateCcw,
+  Image as ImageIcon,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 
@@ -32,45 +33,51 @@ type Catch = {
   created_at: string;
 };
 
-const colors = {
-  forest: "#12352A",
-  deepForest: "#071D17",
-  lake: "#286B78",
-  lakeDark: "#153E48",
-  sunset: "#E97845",
-  gold: "#E9B949",
-  cream: "#F6F1E6",
-  paper: "#FFFDF7",
-  ink: "#17312A",
-  muted: "#6B756F",
-  white: "#FFFFFF",
+type ViewerState = {
+  item: Catch;
+  photos: string[];
+  index: number;
 };
 
-const FAMILY_CODE = "Nofireplease123";
-const ACCESS_KEY = "ely-fishing-family-access";
+const colors = {
+  forest: "#173A2A",
+  darkForest: "#0C2118",
+  deepest: "#07130E",
+  lake: "#2D7C91",
+  lakeLight: "#72B7C4",
+  cream: "#F4EFE3",
+  warmWhite: "#FFFDF7",
+  gold: "#D9A441",
+  orange: "#C96A3D",
+  red: "#B94A42",
+  textDark: "#18241D",
+  muted: "#68746B",
+  line: "#D8D1C2",
+};
 
-/*
-  image_url originally contained one normal URL.
+const BUBBLES = Array.from({ length: 22 }, (_, index) => ({
+  left: `${(index * 17) % 97}%`,
+  delay: `${(index % 7) * 0.13}s`,
+  duration: `${2.1 + (index % 5) * 0.28}s`,
+  size: `${10 + (index % 5) * 5}px`,
+  drift: `${-25 + (index % 7) * 9}px`,
+}));
 
-  New posts can contain:
-  [
-    "photo-url-1",
-    "photo-url-2",
-    "photo-url-3"
-  ]
-
-  Older posts containing one normal URL still work.
-*/
-function getPhotoUrls(imageUrl: string | null): string[] {
+function getPhotoUrls(
+  imageUrl: string | null | undefined
+): string[] {
   if (!imageUrl) return [];
 
   try {
     const parsed = JSON.parse(imageUrl);
 
-    if (Array.isArray(parsed)) {
-      return parsed.filter(
-        (item) => typeof item === "string"
-      );
+    if (
+      Array.isArray(parsed) &&
+      parsed.every(
+        (value) => typeof value === "string"
+      )
+    ) {
+      return parsed;
     }
   } catch {
     // Old posts contain one normal URL.
@@ -79,98 +86,75 @@ function getPhotoUrls(imageUrl: string | null): string[] {
   return [imageUrl];
 }
 
-function formatDate(date: string) {
-  const d = new Date(date);
+function formatTimeAgo(dateString: string) {
+  const date = new Date(dateString);
 
-  if (Number.isNaN(d.getTime())) {
-    return "Recently";
+  if (Number.isNaN(date.getTime())) {
+    return "";
   }
 
-  return d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  const seconds = Math.floor(
+    (Date.now() - date.getTime()) / 1000
+  );
+
+  if (seconds < 60) {
+    return "Just now";
+  }
+
+  const minutes = Math.floor(seconds / 60);
+
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+
+  if (days < 7) {
+    return `${days}d ago`;
+  }
+
+  return date.toLocaleDateString();
 }
 
 export default function Home() {
   const [catches, setCatches] = useState<Catch[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [accessGranted, setAccessGranted] =
-    useState(false);
+  const [showPost, setShowPost] = useState(false);
+  const [posting, setPosting] = useState(false);
 
-  const [familyCode, setFamilyCode] =
-    useState("");
-
-  const [codeError, setCodeError] =
-    useState("");
-
-  const [showPost, setShowPost] =
-    useState(false);
-
-  const [posting, setPosting] =
-    useState(false);
-
-  const [name, setName] =
-    useState("");
-
-  const [fishSpecies, setFishSpecies] =
-    useState("");
-
-  const [length, setLength] =
-    useState("");
-
-  const [weight, setWeight] =
-    useState("");
-
+  const [name, setName] = useState("");
+  const [fishSpecies, setFishSpecies] = useState("");
+  const [length, setLength] = useState("");
+  const [weight, setWeight] = useState("");
   const [lake, setLake] =
     useState("White Iron Lake");
+  const [caption, setCaption] = useState("");
 
-  const [caption, setCaption] =
-    useState("");
-
-  const [photos, setPhotos] =
-    useState<File[]>([]);
+  const [photoFiles, setPhotoFiles] = useState<File[]>(
+    []
+  );
 
   const [photoPreviews, setPhotoPreviews] =
     useState<string[]>([]);
 
-  const [viewerOpen, setViewerOpen] =
-    useState(false);
+  const [viewer, setViewer] =
+    useState<ViewerState | null>(null);
 
-  const [viewerPhotos, setViewerPhotos] =
-    useState<string[]>([]);
+  const [zoom, setZoom] = useState(1);
 
-  const [viewerIndex, setViewerIndex] =
-    useState(0);
-
-  const [zoom, setZoom] =
-    useState(1);
-
-  const [selectedCatch, setSelectedCatch] =
-    useState<Catch | null>(null);
-
-  const [celebratingId, setCelebratingId] =
+  const [celebrateId, setCelebrateId] =
     useState<number | null>(null);
 
   useEffect(() => {
-    const hasAccess =
-      localStorage.getItem(ACCESS_KEY) ===
-      "granted";
-
-    if (hasAccess) {
-      setAccessGranted(true);
-    } else {
-      setLoading(false);
-    }
+    loadCatches();
   }, []);
-
-  useEffect(() => {
-    if (accessGranted) {
-      loadCatches();
-    }
-  }, [accessGranted]);
 
   useEffect(() => {
     return () => {
@@ -179,6 +163,56 @@ export default function Home() {
       );
     };
   }, [photoPreviews]);
+
+  useEffect(() => {
+    if (celebrateId === null) return;
+
+    const timer = window.setTimeout(() => {
+      setCelebrateId(null);
+    }, 3000);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [celebrateId]);
+
+  useEffect(() => {
+    if (!viewer) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        closeViewer();
+      }
+
+      if (event.key === "ArrowLeft") {
+        previousPhoto();
+      }
+
+      if (event.key === "ArrowRight") {
+        nextPhoto();
+      }
+
+      if (event.key === "+") {
+        zoomIn();
+      }
+
+      if (event.key === "-") {
+        zoomOut();
+      }
+    }
+
+    window.addEventListener(
+      "keydown",
+      handleKeyDown
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        handleKeyDown
+      );
+    };
+  }, [viewer]);
 
   async function loadCatches() {
     setLoading(true);
@@ -191,72 +225,15 @@ export default function Home() {
       });
 
     if (!error && data) {
-      setCatches(data);
+      setCatches(data as Catch[]);
+    } else if (error) {
+      console.error(
+        "Could not load catches:",
+        error
+      );
     }
 
     setLoading(false);
-  }
-
-  function unlockSite() {
-    if (
-      familyCode.trim() ===
-      FAMILY_CODE
-    ) {
-      localStorage.setItem(
-        ACCESS_KEY,
-        "granted"
-      );
-
-      setAccessGranted(true);
-      setCodeError("");
-    } else {
-      setCodeError(
-        "That family code is incorrect."
-      );
-    }
-  }
-
-  function handlePhotos(
-    files: FileList | null
-  ) {
-    if (!files) return;
-
-    const selected = Array.from(files);
-
-    if (selected.length === 0) {
-      return;
-    }
-
-    const combined = [
-      ...photos,
-      ...selected,
-    ].slice(0, 8);
-
-    photoPreviews.forEach((url) =>
-      URL.revokeObjectURL(url)
-    );
-
-    setPhotos(combined);
-
-    setPhotoPreviews(
-      combined.map((file) =>
-        URL.createObjectURL(file)
-      )
-    );
-  }
-
-  function removePhoto(index: number) {
-    const nextPhotos = photos.filter(
-      (_, i) => i !== index
-    );
-
-    const nextPreviews =
-      photoPreviews.filter(
-        (_, i) => i !== index
-      );
-
-    setPhotos(nextPhotos);
-    setPhotoPreviews(nextPreviews);
   }
 
   function resetPostForm() {
@@ -266,7 +243,7 @@ export default function Home() {
     setWeight("");
     setLake("White Iron Lake");
     setCaption("");
-    setPhotos([]);
+    setPhotoFiles([]);
 
     photoPreviews.forEach((url) =>
       URL.revokeObjectURL(url)
@@ -275,12 +252,75 @@ export default function Home() {
     setPhotoPreviews([]);
   }
 
+  function closePostModal() {
+    if (posting) return;
+
+    resetPostForm();
+    setShowPost(false);
+  }
+
+  function handlePhotoChange(
+    event: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const files = Array.from(
+      event.target.files || []
+    );
+
+    if (files.length === 0) return;
+
+    const imageFiles = files.filter((file) =>
+      file.type.startsWith("image/")
+    );
+
+    if (imageFiles.length === 0) {
+      alert("Please choose image files.");
+      return;
+    }
+
+    if (imageFiles.length > 8) {
+      alert(
+        "You can add up to 8 photos to one catch."
+      );
+      return;
+    }
+
+    photoPreviews.forEach((url) =>
+      URL.revokeObjectURL(url)
+    );
+
+    const previews = imageFiles.map((file) =>
+      URL.createObjectURL(file)
+    );
+
+    setPhotoFiles(imageFiles);
+    setPhotoPreviews(previews);
+  }
+
+  function removeSelectedPhoto(index: number) {
+    const newFiles = photoFiles.filter(
+      (_, photoIndex) => photoIndex !== index
+    );
+
+    const newPreviews = photoPreviews.filter(
+      (_, photoIndex) => photoIndex !== index
+    );
+
+    if (photoPreviews[index]) {
+      URL.revokeObjectURL(
+        photoPreviews[index]
+      );
+    }
+
+    setPhotoFiles(newFiles);
+    setPhotoPreviews(newPreviews);
+  }
+
   async function postCatch() {
     if (
-      !name ||
-      !fishSpecies ||
-      !length ||
-      !lake
+      !name.trim() ||
+      !fishSpecies.trim() ||
+      !length.trim() ||
+      !lake.trim()
     ) {
       alert(
         "Please enter your name, fish species, length, and lake."
@@ -288,37 +328,45 @@ export default function Home() {
       return;
     }
 
+    if (Number(length) <= 0) {
+      alert("Please enter a valid fish length.");
+      return;
+    }
+
+    if (
+      weight &&
+      Number(weight) < 0
+    ) {
+      alert("Please enter a valid fish weight.");
+      return;
+    }
+
     setPosting(true);
 
     try {
-      const uploadedPhotoUrls: string[] = [];
+      const uploadedUrls: string[] = [];
 
-      for (
-        let i = 0;
-        i < photos.length;
-        i++
-      ) {
-        const photo = photos[i];
-
+      for (const photo of photoFiles) {
         const extension =
           photo.name.split(".").pop() ||
           "jpg";
 
         const fileName =
-          `${Date.now()}-${i}-${Math.random()
+          `${Date.now()}-${Math.random()
             .toString(36)
             .substring(2)}.${extension}`;
 
         const filePath =
           `private/${fileName}`;
 
-        const { error: uploadError } =
-          await supabase.storage
-            .from("catch-photos")
-            .upload(
-              filePath,
-              photo
-            );
+        const {
+          error: uploadError,
+        } = await supabase.storage
+          .from("catch-photos")
+          .upload(
+            filePath,
+            photo
+          );
 
         if (uploadError) {
           throw uploadError;
@@ -339,280 +387,432 @@ export default function Home() {
           throw signedError;
         }
 
-        if (
-          signedData?.signedUrl
-        ) {
-          uploadedPhotoUrls.push(
-            signedData.signedUrl
-          );
-        }
+        uploadedUrls.push(
+          signedData.signedUrl
+        );
       }
 
-      let imageUrl: string | null =
-        null;
+      let imageUrl: string | null = null;
 
-      if (
-        uploadedPhotoUrls.length === 1
-      ) {
-        imageUrl =
-          uploadedPhotoUrls[0];
-      } else if (
-        uploadedPhotoUrls.length > 1
-      ) {
-        imageUrl =
-          JSON.stringify(
-            uploadedPhotoUrls
-          );
+      if (uploadedUrls.length === 1) {
+        imageUrl = uploadedUrls[0];
       }
 
-      const { data, error } =
-        await supabase
-          .from("catches")
-          .insert({
-            name,
-            fish_species:
-              fishSpecies,
-            length: Number(length),
-            weight: weight
-              ? Number(weight)
-              : null,
-            lake,
-            caption:
-              caption || null,
-            image_url: imageUrl,
-          })
-          .select()
-          .single();
+      if (uploadedUrls.length > 1) {
+        imageUrl =
+          JSON.stringify(uploadedUrls);
+      }
+
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("catches")
+        .insert({
+          name: name.trim(),
+          fish_species:
+            fishSpecies.trim(),
+          length: Number(length),
+          weight: weight
+            ? Number(weight)
+            : null,
+          lake: lake.trim(),
+          caption:
+            caption.trim() || null,
+          image_url: imageUrl,
+        })
+        .select()
+        .single();
 
       if (error) {
         throw error;
       }
 
+      if (data) {
+        const newCatch =
+          data as Catch;
+
+        setCatches((current) => [
+          newCatch,
+          ...current,
+        ]);
+
+        setCelebrateId(
+          newCatch.id
+        );
+      }
+
       resetPostForm();
       setShowPost(false);
-
-      await loadCatches();
-
-      /*
-        Trigger the bubble celebration
-        on the newly-created catch.
-      */
-      if (data?.id) {
-        setCelebratingId(data.id);
-
-        setTimeout(() => {
-          setCelebratingId(null);
-        }, 2800);
-      }
     } catch (error) {
-      console.error(error);
+      console.error(
+        "Posting error:",
+        error
+      );
 
       alert(
         "Something went wrong posting the catch."
       );
+    } finally {
+      setPosting(false);
+    }
+  }
+
+  async function deleteCatch(
+    id: number
+  ) {
+    const confirmed =
+      window.confirm(
+        "Are you sure you want to delete this catch?"
+      );
+
+    if (!confirmed) {
+      return;
     }
 
-    setPosting(false);
+    try {
+      const {
+        error,
+      } = await supabase
+        .from("catches")
+        .delete()
+        .eq("id", id);
+
+      if (error) {
+        throw error;
+      }
+
+      setCatches((current) =>
+        current.filter(
+          (item) => item.id !== id
+        )
+      );
+
+      if (
+        viewer &&
+        viewer.item.id === id
+      ) {
+        setViewer(null);
+      }
+    } catch (error) {
+      console.error(
+        "Delete error:",
+        error
+      );
+
+      alert(
+        "Something went wrong deleting the catch. Supabase may need a DELETE policy."
+      );
+    }
   }
 
   function openViewer(
-    urls: string[],
+    item: Catch,
     index = 0
   ) {
-    if (!urls.length) return;
+    const photos =
+      getPhotoUrls(
+        item.image_url
+      );
 
-    setViewerPhotos(urls);
-    setViewerIndex(index);
+    if (photos.length === 0) {
+      return;
+    }
+
+    setViewer({
+      item,
+      photos,
+      index,
+    });
+
     setZoom(1);
-    setViewerOpen(true);
   }
 
   function closeViewer() {
-    setViewerOpen(false);
-    setZoom(1);
-  }
-
-  function nextPhoto() {
-    if (!viewerPhotos.length) return;
-
-    setViewerIndex(
-      (current) =>
-        (current + 1) %
-        viewerPhotos.length
-    );
-
+    setViewer(null);
     setZoom(1);
   }
 
   function previousPhoto() {
-    if (!viewerPhotos.length) return;
+    if (!viewer) return;
 
-    setViewerIndex(
-      (current) =>
-        (current - 1 +
-          viewerPhotos.length) %
-        viewerPhotos.length
-    );
+    const newIndex =
+      viewer.index === 0
+        ? viewer.photos.length - 1
+        : viewer.index - 1;
+
+    setViewer({
+      ...viewer,
+      index: newIndex,
+    });
 
     setZoom(1);
   }
 
-  function openCatchDetails(
-    item: Catch
-  ) {
-    setSelectedCatch(item);
+  function nextPhoto() {
+    if (!viewer) return;
+
+    const newIndex =
+      viewer.index ===
+      viewer.photos.length - 1
+        ? 0
+        : viewer.index + 1;
+
+    setViewer({
+      ...viewer,
+      index: newIndex,
+    });
+
+    setZoom(1);
   }
 
-  if (!accessGranted) {
-    return (
-      <main style={styles.accessPage}>
-        <div style={styles.accessCard}>
-          <div style={styles.accessLogoWrap}>
-            <img
-              src="/loon-logo.png.png"
-              alt="Ely Fishing"
-              style={styles.accessLogo}
-            />
-          </div>
-
-          <div style={styles.accessEyebrow}>
-            FAMILY FISHING TRIP
-          </div>
-
-          <h1 style={styles.accessTitle}>
-            Ely Fishing
-          </h1>
-
-          <p style={styles.accessText}>
-            White Iron Lake • Minnesota
-          </p>
-
-          <input
-            type="password"
-            value={familyCode}
-            onChange={(e) =>
-              setFamilyCode(
-                e.target.value
-              )
-            }
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                unlockSite();
-              }
-            }}
-            placeholder="Family code"
-            style={styles.accessInput}
-          />
-
-          {codeError && (
-            <div style={styles.codeError}>
-              {codeError}
-            </div>
-          )}
-
-          <button
-            onClick={unlockSite}
-            style={styles.accessButton}
-          >
-            Enter Fishing Trip
-          </button>
-
-          <div style={styles.accessFooter}>
-            Our lake. Our fish. Our stories.
-          </div>
-        </div>
-      </main>
+  function zoomIn() {
+    setZoom((current) =>
+      Math.min(current + 0.25, 3)
     );
+  }
+
+  function zoomOut() {
+    setZoom((current) =>
+      Math.max(current - 0.25, 0.5)
+    );
+  }
+
+  function resetZoom() {
+    setZoom(1);
+  }
+
+  function handleImageWheel(
+    event: React.WheelEvent
+  ) {
+    event.preventDefault();
+
+    if (event.deltaY < 0) {
+      zoomIn();
+    } else {
+      zoomOut();
+    }
   }
 
   return (
     <main style={styles.page}>
+      <style>{`
+        * {
+          box-sizing: border-box;
+        }
+
+        html {
+          scroll-behavior: smooth;
+        }
+
+        body {
+          margin: 0;
+          background: ${colors.deepest};
+        }
+
+        button,
+        input,
+        textarea {
+          font-family: inherit;
+        }
+
+        button {
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        .ely-post-button:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 14px 30px rgba(201,106,61,0.32) !important;
+        }
+
+        .ely-photo:hover img {
+          transform: scale(1.015);
+        }
+
+        .ely-delete:hover {
+          background: rgba(185,74,66,0.14) !important;
+          border-color: rgba(185,74,66,0.4) !important;
+        }
+
+        .ely-thumbnail:hover {
+          transform: translateY(-2px);
+          opacity: 1 !important;
+        }
+
+        .ely-nav-button:hover {
+          color: ${colors.gold} !important;
+        }
+
+        @keyframes bubbleRise {
+          0% {
+            opacity: 0;
+            transform: translate3d(0, 45px, 0) scale(0.5);
+          }
+
+          15% {
+            opacity: 0.9;
+          }
+
+          75% {
+            opacity: 0.65;
+          }
+
+          100% {
+            opacity: 0;
+            transform:
+              translate3d(var(--drift), -260px, 0)
+              scale(1.1);
+          }
+        }
+
+        @keyframes newCatchGlow {
+          0% {
+            box-shadow:
+              0 0 0 rgba(217,164,65,0),
+              0 12px 35px rgba(0,0,0,0.18);
+          }
+
+          30% {
+            box-shadow:
+              0 0 35px rgba(217,164,65,0.45),
+              0 12px 35px rgba(0,0,0,0.18);
+          }
+
+          100% {
+            box-shadow:
+              0 0 0 rgba(217,164,65,0),
+              0 12px 35px rgba(0,0,0,0.18);
+          }
+        }
+
+        @keyframes softPulse {
+          0%, 100% {
+            transform: scale(1);
+          }
+
+          50% {
+            transform: scale(1.04);
+          }
+        }
+
+        @media (max-width: 600px) {
+          .hero-title {
+            font-size: 44px !important;
+          }
+
+          .catch-stats {
+            grid-template-columns: 1fr !important;
+            gap: 12px !important;
+          }
+
+          .catch-stat {
+            padding-bottom: 10px !important;
+            border-bottom: 1px solid ${colors.line};
+          }
+
+          .catch-stat:last-child {
+            border-bottom: none;
+            padding-bottom: 0 !important;
+          }
+
+          .bottom-nav {
+            gap: 26px !important;
+          }
+
+          .viewer-info {
+            max-height: 34vh !important;
+          }
+        }
+
+        @media (min-width: 800px) {
+          .feed-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+          }
+
+          .feed-grid > article {
+            margin-bottom: 0 !important;
+          }
+
+          .feed-grid > article:first-child {
+            grid-column: 1 / -1;
+          }
+        }
+      `}</style>
+
       {/* =========================
           HERO
       ========================= */}
 
       <section style={styles.hero}>
         <div style={styles.heroImage} />
+
         <div style={styles.heroOverlay} />
 
-        <div style={styles.heroGlowOne} />
-        <div style={styles.heroGlowTwo} />
-
         <div style={styles.heroContent}>
-          <div style={styles.heroTop}>
-            <div style={styles.heroBadge}>
-              <span
-                style={styles.liveDot}
-              />
-              FAMILY FISHING TRIP
-            </div>
+          <div style={styles.heroTopLabel}>
+            FAMILY FISHING JOURNAL
           </div>
 
-          <div style={styles.centerHero}>
-            <div style={styles.logoRing}>
-              <img
-                src="/loon-logo.png.png"
-                alt="Ely Fishing loon"
-                style={styles.logoImage}
-              />
-            </div>
-
-            <div style={styles.titleSmall}>
-              WHITE IRON LAKE
-            </div>
-
-            <h1 style={styles.title}>
-              Ely Fishing
-            </h1>
-
-            <p style={styles.subtitle}>
-              Minnesota • Our Fishing Journal
-            </p>
+          {/* LOGO — NO CIRCLE */}
+          <div style={styles.fishLogo}>
+            <img
+              src="/loon-logo.png.png"
+              alt="Ely Fishing loon logo"
+              style={styles.logoImage}
+            />
           </div>
 
-          <div style={styles.heroBottom}>
-            <div style={styles.locationCard}>
-              <div
-                style={styles.locationIcon}
-              >
-                <MapPin size={21} />
+          <h1
+            className="hero-title"
+            style={styles.title}
+          >
+            Ely Fishing
+          </h1>
+
+          <p style={styles.subtitle}>
+            White Iron Lake • Northern Minnesota
+          </p>
+
+          <div style={styles.heroRule}>
+            <span />
+            <span style={styles.heroRuleDot}>
+              •
+            </span>
+            <span />
+          </div>
+
+          <div style={styles.locationCard}>
+            <div style={styles.locationIcon}>
+              <MapPin size={21} />
+            </div>
+
+            <div>
+              <div style={styles.locationLabel}>
+                FISHING SPOT
               </div>
 
-              <div>
-                <div
-                  style={
-                    styles.locationLabel
-                  }
-                >
-                  FISHING SPOT
-                </div>
+              <div style={styles.locationTitle}>
+                White Iron Lake
+              </div>
 
-                <div
-                  style={
-                    styles.locationTitle
-                  }
-                >
-                  White Iron Lake
-                </div>
-
-                <div
-                  style={styles.locationSub}
-                >
-                  Ely, Minnesota
-                </div>
+              <div style={styles.locationSub}>
+                Ely, Minnesota
               </div>
             </div>
-
-            <button
-              onClick={() =>
-                setShowPost(true)
-              }
-              style={styles.postButton}
-            >
-              <Plus size={22} />
-              Post a Catch
-            </button>
           </div>
+
+          <button
+            className="ely-post-button"
+            onClick={() =>
+              setShowPost(true)
+            }
+            style={styles.postButton}
+          >
+            <Plus size={21} />
+            Post a Catch
+          </button>
         </div>
       </section>
 
@@ -621,444 +821,483 @@ export default function Home() {
       ========================= */}
 
       <section style={styles.feed}>
-        <div style={styles.sectionHeader}>
+        <div style={styles.feedIntro}>
           <div>
-            <div
-              style={styles.sectionEyebrow}
-            >
+            <div style={styles.sectionEyebrow}>
               THE CATCH BOARD
             </div>
 
-            <h2
-              style={styles.sectionTitle}
-            >
+            <h2 style={styles.sectionTitle}>
               Recent Catches
             </h2>
 
-            <p
-              style={styles.sectionDescription}
-            >
-              The latest fish from the lake.
+            <p style={styles.sectionDescription}>
+              The newest fish are always at the top.
             </p>
           </div>
 
-          <div
-            style={styles.sectionIcon}
-          >
-            <Fish size={24} />
+          <div style={styles.fishBadge}>
+            <Fish size={23} />
           </div>
         </div>
 
         {loading && (
           <div style={styles.loadingCard}>
-            <div
-              style={styles.loadingCircle}
-            >
-              <Fish size={25} />
-            </div>
+            <Fish
+              size={30}
+              style={{
+                animation:
+                  "softPulse 1.2s infinite",
+              }}
+            />
 
-            Loading the catch board...
+            <span>
+              Loading the catch board...
+            </span>
           </div>
         )}
 
         {!loading &&
           catches.length === 0 && (
             <div style={styles.emptyCard}>
-              <Fish
-                size={44}
-                color={colors.gold}
-              />
+              <div style={styles.emptyIcon}>
+                <Fish size={42} />
+              </div>
 
-              <h3>
+              <h3 style={styles.emptyTitle}>
                 No catches yet
               </h3>
 
-              <p>
-                Be the first one to put
-                a fish on the board.
+              <p style={styles.emptyText}>
+                Be the first person to post
+                a fish from the trip.
               </p>
 
               <button
                 onClick={() =>
                   setShowPost(true)
                 }
-                style={
-                  styles.emptyButton
-                }
+                style={styles.emptyButton}
               >
                 <Plus size={18} />
-                Post First Catch
+                Post the first catch
               </button>
             </div>
           )}
 
         {!loading &&
-          catches.map((item) => {
-            const urls =
-              getPhotoUrls(
-                item.image_url
-              );
+          catches.length > 0 && (
+            <div className="feed-grid">
+              {catches.map((item) => {
+                const photos =
+                  getPhotoUrls(
+                    item.image_url
+                  );
 
-            const isCelebrating =
-              celebratingId ===
-              item.id;
+                const isNew =
+                  celebrateId ===
+                  item.id;
 
-            return (
-              <article
-                key={item.id}
-                style={{
-                  ...styles.catchCard,
-                  ...(isCelebrating
-                    ? styles.catchCardNew
-                    : {}),
-                }}
-              >
-                {/* BUBBLE CELEBRATION */}
-
-                {isCelebrating && (
-                  <div
-                    style={
-                      styles.bubbleLayer
-                    }
-                    aria-hidden="true"
+                return (
+                  <article
+                    key={item.id}
+                    style={{
+                      ...styles.catchCard,
+                      ...(isNew
+                        ? {
+                            animation:
+                              "newCatchGlow 3s ease-out",
+                          }
+                        : {}),
+                    }}
                   >
-                    {Array.from({
-                      length: 18,
-                    }).map(
-                      (_, index) => (
-                        <span
-                          key={index}
-                          style={{
-                            ...styles.bubble,
-                            left: `${
-                              5 +
-                              Math.random() *
-                                90
-                            }%`,
-                            animationDelay: `${
-                              Math.random() *
-                              0.7
-                            }s`,
-                            animationDuration: `${
-                              1.8 +
-                              Math.random() *
-                                1
-                            }s`,
-                            width: `${
-                              8 +
-                              Math.random() *
-                                17
-                            }px`,
-                            height: `${
-                              8 +
-                              Math.random() *
-                                17
-                            }px`,
-                          }}
-                        />
-                      )
-                    )}
-                  </div>
-                )}
+                    {/* PHOTO AREA */}
 
-                {/* PHOTO AREA */}
-
-                {urls.length > 0 && (
-                  <div
-                    style={
-                      styles.photoGallery
-                    }
-                  >
-                    <button
-                      onClick={() =>
-                        openViewer(
-                          urls,
-                          0
-                        )
-                      }
-                      style={
-                        styles.mainPhotoButton
-                      }
-                      aria-label="Open catch photo"
-                    >
-                      <img
-                        src={urls[0]}
-                        alt={
-                          item.fish_species
-                        }
-                        style={
-                          styles.catchImage
-                        }
-                      />
-
+                    {photos.length > 0 && (
                       <div
+                        className="ely-photo"
                         style={
-                          styles.photoShade
-                        }
-                      />
-
-                      <div
-                        style={
-                          styles.photoOpenHint
+                          styles.photoSection
                         }
                       >
-                        <ZoomIn
-                          size={18}
-                        />
-                        Tap to view
-                      </div>
+                        <button
+                          onClick={() =>
+                            openViewer(
+                              item,
+                              0
+                            )
+                          }
+                          style={
+                            styles.mainPhotoButton
+                          }
+                          aria-label="Open catch photo"
+                        >
+                          <img
+                            src={photos[0]}
+                            alt={`${item.fish_species} caught by ${item.name}`}
+                            style={
+                              styles.catchImage
+                            }
+                          />
 
-                      {urls.length >
-                        1 && (
+                          <div
+                            style={
+                              styles.photoOpenHint
+                            }
+                          >
+                            <ImageIcon
+                              size={16}
+                            />
+
+                            <span>
+                              Tap to enlarge
+                            </span>
+                          </div>
+                        </button>
+
+                        {photos.length > 1 && (
+                          <div
+                            style={
+                              styles.thumbnailRow
+                            }
+                          >
+                            {photos.map(
+                              (
+                                photoUrl,
+                                photoIndex
+                              ) => (
+                                <button
+                                  key={
+                                    photoIndex
+                                  }
+                                  className="ely-thumbnail"
+                                  onClick={() =>
+                                    openViewer(
+                                      item,
+                                      photoIndex
+                                    )
+                                  }
+                                  style={{
+                                    ...styles.thumbnail,
+                                    opacity:
+                                      photoIndex ===
+                                      0
+                                        ? 1
+                                        : 0.72,
+                                  }}
+                                >
+                                  <img
+                                    src={
+                                      photoUrl
+                                    }
+                                    alt={`Catch photo ${photoIndex + 1}`}
+                                    style={
+                                      styles.thumbnailImage
+                                    }
+                                  />
+
+                                  {photoIndex ===
+                                    0 && (
+                                    <span
+                                      style={
+                                        styles.coverPhotoLabel
+                                      }
+                                    >
+                                      Main
+                                    </span>
+                                  )}
+                                </button>
+                              )
+                            )}
+
+                            <span
+                              style={
+                                styles.photoCount
+                              }
+                            >
+                              {photos.length}{" "}
+                              photos
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* BUBBLES */}
+
+                    {isNew && (
+                      <div
+                        style={
+                          styles.bubbleLayer
+                        }
+                        aria-hidden="true"
+                      >
+                        {BUBBLES.map(
+                          (
+                            bubble,
+                            index
+                          ) => (
+                            <span
+                              key={index}
+                              style={{
+                                ...styles.bubble,
+                                left:
+                                  bubble.left,
+                                width:
+                                  bubble.size,
+                                height:
+                                  bubble.size,
+                                animationDelay:
+                                  bubble.delay,
+                                animationDuration:
+                                  bubble.duration,
+                                "--drift":
+                                  bubble.drift,
+                              } as React.CSSProperties}
+                            />
+                          )
+                        )}
+                      </div>
+                    )}
+
+                    {/* CATCH CONTENT */}
+
+                    <div
+                      style={
+                        styles.catchContent
+                      }
+                    >
+                      <div
+                        style={
+                          styles.catchHeader
+                        }
+                      >
+                        <div>
+                          <div
+                            style={
+                              styles.catchPerson
+                            }
+                          >
+                            {item.name}
+                          </div>
+
+                          <h3
+                            style={
+                              styles.fishName
+                            }
+                          >
+                            {item.fish_species}
+                          </h3>
+                        </div>
+
                         <div
                           style={
-                            styles.photoCount
+                            styles.catchActions
                           }
                         >
-                          <Images
-                            size={16}
+                          <Fish
+                            size={22}
+                            color={
+                              colors.lake
+                            }
                           />
-                          {urls.length} photos
+
+                          <button
+                            className="ely-delete"
+                            onClick={() =>
+                              deleteCatch(
+                                item.id
+                              )
+                            }
+                            style={
+                              styles.deleteButton
+                            }
+                            title="Delete catch"
+                            aria-label="Delete catch"
+                          >
+                            <Trash2
+                              size={17}
+                            />
+                          </button>
                         </div>
+                      </div>
+
+                      {/* CLEAR METADATA */}
+
+                      <div
+                        className="catch-stats"
+                        style={
+                          styles.catchStats
+                        }
+                      >
+                        <div
+                          className="catch-stat"
+                          style={
+                            styles.catchStat
+                          }
+                        >
+                          <span
+                            style={
+                              styles.statLabel
+                            }
+                          >
+                            LENGTH
+                          </span>
+
+                          <strong
+                            style={
+                              styles.statValue
+                            }
+                          >
+                            {item.length} in
+                          </strong>
+                        </div>
+
+                        <div
+                          className="catch-stat"
+                          style={
+                            styles.catchStat
+                          }
+                        >
+                          <span
+                            style={
+                              styles.statLabel
+                            }
+                          >
+                            WEIGHT
+                          </span>
+
+                          <strong
+                            style={
+                              styles.statValue
+                            }
+                          >
+                            {item.weight !==
+                            null
+                              ? `${item.weight} lb`
+                              : "—"}
+                          </strong>
+                        </div>
+
+                        <div
+                          className="catch-stat"
+                          style={
+                            styles.catchStat
+                          }
+                        >
+                          <span
+                            style={
+                              styles.statLabel
+                            }
+                          >
+                            LAKE
+                          </span>
+
+                          <strong
+                            style={{
+                              ...styles.statValue,
+                              color:
+                                colors.lake,
+                            }}
+                          >
+                            {item.lake}
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div
+                        style={
+                          styles.metadataLine
+                        }
+                      >
+                        Length —{" "}
+                        {item.length} in
+                        <span>
+                          •
+                        </span>
+                        Weight —{" "}
+                        {item.weight !==
+                        null
+                          ? `${item.weight} lb`
+                          : "Not recorded"}
+                        <span>
+                          •
+                        </span>
+                        Lake — {item.lake}
+                      </div>
+
+                      {item.caption && (
+                        <p
+                          style={
+                            styles.caption
+                          }
+                        >
+                          {item.caption}
+                        </p>
                       )}
-                    </button>
 
-                    {urls.length >
-                      1 && (
                       <div
                         style={
-                          styles.thumbnailRow
+                          styles.social
                         }
                       >
-                        {urls
-                          .slice(0, 4)
-                          .map(
-                            (
-                              url,
-                              index
-                            ) => (
-                              <button
-                                key={
-                                  index
-                                }
-                                onClick={() =>
-                                  openViewer(
-                                    urls,
-                                    index
-                                  )
-                                }
-                                style={
-                                  styles.thumbnailButton
-                                }
-                              >
-                                <img
-                                  src={url}
-                                  alt=""
-                                  style={
-                                    styles.thumbnail
-                                  }
-                                />
-                              </button>
-                            )
-                          )}
-                      </div>
-                    )}
-                  </div>
-                )}
+                        <button
+                          style={
+                            styles.socialButton
+                          }
+                        >
+                          <Heart
+                            size={17}
+                          />
+                          Like
+                        </button>
 
-                <div
-                  style={
-                    styles.catchContent
-                  }
-                >
-                  <div
-                    style={
-                      styles.catchHeader
-                    }
-                  >
-                    <div>
-                      <div
-                        style={
-                          styles.catchPerson
-                        }
-                      >
-                        {item.name}
-                      </div>
+                        <button
+                          style={
+                            styles.socialButton
+                          }
+                        >
+                          <MessageCircle
+                            size={17}
+                          />
+                          Comment
+                        </button>
 
-                      <h3
-                        style={
-                          styles.fishName
-                        }
-                      >
-                        {item.fish_species}
-                      </h3>
-                    </div>
-
-                    <div
-                      style={
-                        styles.fishBadge
-                      }
-                    >
-                      <Fish size={18} />
-                    </div>
-                  </div>
-
-                  <div
-                    style={
-                      styles.catchStats
-                    }
-                  >
-                    <div
-                      style={
-                        styles.statBlock
-                      }
-                    >
-                      <span
-                        style={
-                          styles.statLabel
-                        }
-                      >
-                        LENGTH
-                      </span>
-
-                      <strong
-                        style={
-                          styles.statValue
-                        }
-                      >
-                        — {item.length}"
-                      </strong>
-                    </div>
-
-                    {item.weight !==
-                      null && (
-                      <div
-                        style={
-                          styles.statBlock
-                        }
-                      >
                         <span
                           style={
-                            styles.statLabel
+                            styles.time
                           }
                         >
-                          WEIGHT
+                          {formatTimeAgo(
+                            item.created_at
+                          )}
                         </span>
-
-                        <strong
-                          style={
-                            styles.statValue
-                          }
-                        >
-                          — {item.weight} lbs
-                        </strong>
                       </div>
-                    )}
-
-                    <div
-                      style={
-                        styles.statBlock
-                      }
-                    >
-                      <span
-                        style={
-                          styles.statLabel
-                        }
-                      >
-                        LAKE
-                      </span>
-
-                      <strong
-                        style={
-                          styles.statValue
-                        }
-                      >
-                        — {item.lake}
-                      </strong>
                     </div>
-                  </div>
-
-                  {item.caption && (
-                    <p
-                      style={
-                        styles.caption
-                      }
-                    >
-                      {item.caption}
-                    </p>
-                  )}
-
-                  <div
-                    style={
-                      styles.postFooter
-                    }
-                  >
-                    <button
-                      style={
-                        styles.socialButton
-                      }
-                    >
-                      <Heart size={17} />
-                      Like
-                    </button>
-
-                    <button
-                      style={
-                        styles.socialButton
-                      }
-                    >
-                      <MessageCircle
-                        size={17}
-                      />
-                      Comment
-                    </button>
-
-                    <button
-                      onClick={() =>
-                        openCatchDetails(
-                          item
-                        )
-                      }
-                      style={
-                        styles.detailsButton
-                      }
-                    >
-                      View catch
-                    </button>
-
-                    <span
-                      style={
-                        styles.time
-                      }
-                    >
-                      {formatDate(
-                        item.created_at
-                      )}
-                    </span>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
+                  </article>
+                );
+              })}
+            </div>
+          )}
 
         {/* =========================
             TRIP STATS
         ========================= */}
 
         <div style={styles.tripCard}>
-          <div style={styles.tripHeader}>
-            <div
-              style={
-                styles.tripIcon
-              }
-            >
-              <Trophy size={21} />
+          <div
+            style={
+              styles.tripHeader
+            }
+          >
+            <div style={styles.trophyCircle}>
+              <Trophy size={22} />
             </div>
 
             <div>
               <div
                 style={
-                  styles.tripEyebrow
+                  styles.sectionEyebrow
                 }
               >
                 THIS TRIP
@@ -1069,13 +1308,15 @@ export default function Home() {
                   styles.tripTitle
                 }
               >
-                Fishing Stats
+                Trip Stats
               </h2>
             </div>
           </div>
 
           <div
-            style={styles.tripStats}
+            style={
+              styles.tripStats
+            }
           >
             <div
               style={
@@ -1086,7 +1327,9 @@ export default function Home() {
                 {catches.length}
               </strong>
 
-              <span>CATCHES</span>
+              <span>
+                CATCHES
+              </span>
             </div>
 
             <div
@@ -1105,7 +1348,9 @@ export default function Home() {
                 }
               </strong>
 
-              <span>FISHERMEN</span>
+              <span>
+                FISHERMEN
+              </span>
             </div>
 
             <div
@@ -1113,27 +1358,36 @@ export default function Home() {
                 styles.tripStat
               }
             >
-              <strong>∞</strong>
+              <strong>
+                🐟
+              </strong>
 
-              <span>MEMORIES</span>
+              <span>
+                WHITE IRON
+              </span>
             </div>
           </div>
         </div>
       </section>
 
       {/* =========================
-          NAV
+          BOTTOM NAV
       ========================= */}
 
-      <nav style={styles.nav}>
+      <nav
+        className="bottom-nav"
+        style={styles.nav}
+      >
         <button
+          className="ely-nav-button"
           style={styles.navActive}
         >
           <Fish size={21} />
-          Feed
+          <span>Feed</span>
         </button>
 
         <button
+          className="ely-nav-button"
           onClick={() => {
             window.location.href =
               "/fishing-location";
@@ -1141,21 +1395,23 @@ export default function Home() {
           style={styles.navItem}
         >
           <MapPin size={21} />
-          Fishing
+          <span>Fishing</span>
         </button>
 
         <button
+          className="ely-nav-button"
           style={styles.navItem}
         >
           <Trophy size={21} />
-          Leaders
+          <span>Leaders</span>
         </button>
 
         <button
+          className="ely-nav-button"
           style={styles.navItem}
         >
           <Users size={21} />
-          Family
+          <span>Family</span>
         </button>
       </nav>
 
@@ -1168,18 +1424,16 @@ export default function Home() {
           style={
             styles.modalBackground
           }
-          onClick={(e) => {
+          onMouseDown={(event) => {
             if (
-              e.target ===
-              e.currentTarget
+              event.target ===
+              event.currentTarget
             ) {
-              setShowPost(false);
+              closePostModal();
             }
           }}
         >
-          <div
-            style={styles.modal}
-          >
+          <div style={styles.modal}>
             <div
               style={
                 styles.modalHeader
@@ -1204,49 +1458,55 @@ export default function Home() {
 
                 <p
                   style={
-                    styles.modalSub
+                    styles.modalSubtitle
                   }
                 >
-                  Add the details and
-                  your best photos.
+                  Add up to 8 photos of
+                  the catch.
                 </p>
               </div>
 
               <button
-                onClick={() =>
-                  setShowPost(false)
+                onClick={
+                  closePostModal
                 }
                 style={
                   styles.closeButton
                 }
               >
-                <X size={21} />
+                <X size={20} />
               </button>
             </div>
 
             <div
-              style={styles.form}
+              style={
+                styles.form
+              }
             >
               <input
                 value={name}
-                onChange={(e) =>
+                onChange={(event) =>
                   setName(
-                    e.target.value
+                    event.target.value
                   )
                 }
                 placeholder="Your name"
-                style={styles.input}
+                style={
+                  styles.input
+                }
               />
 
               <input
                 value={fishSpecies}
-                onChange={(e) =>
+                onChange={(event) =>
                   setFishSpecies(
-                    e.target.value
+                    event.target.value
                   )
                 }
                 placeholder="Fish species"
-                style={styles.input}
+                style={
+                  styles.input
+                }
               />
 
               <div
@@ -1256,72 +1516,91 @@ export default function Home() {
               >
                 <input
                   value={length}
-                  onChange={(e) =>
+                  onChange={(event) =>
                     setLength(
-                      e.target.value
+                      event.target.value
                     )
                   }
                   placeholder="Length (in)"
                   type="number"
-                  style={styles.input}
+                  min="0"
+                  step="0.1"
+                  style={
+                    styles.input
+                  }
                 />
 
                 <input
                   value={weight}
-                  onChange={(e) =>
+                  onChange={(event) =>
                     setWeight(
-                      e.target.value
+                      event.target.value
                     )
                   }
                   placeholder="Weight (lbs)"
                   type="number"
+                  min="0"
                   step="0.1"
-                  style={styles.input}
+                  style={
+                    styles.input
+                  }
                 />
               </div>
 
               <input
                 value={lake}
-                onChange={(e) =>
+                onChange={(event) =>
                   setLake(
-                    e.target.value
+                    event.target.value
                   )
                 }
                 placeholder="Lake"
-                style={styles.input}
+                style={
+                  styles.input
+                }
               />
 
               <textarea
                 value={caption}
-                onChange={(e) =>
+                onChange={(event) =>
                   setCaption(
-                    e.target.value
+                    event.target.value
                   )
                 }
                 placeholder="Tell the family about the catch..."
-                rows={3}
+                rows={4}
                 style={{
                   ...styles.input,
-                  resize: "none",
+                  resize: "vertical",
                 }}
               />
 
-              {/* PHOTO UPLOAD */}
-
               <label
                 style={
-                  styles.photoUpload
+                  styles.photoButton
                 }
               >
-                <Camera size={22} />
+                <Camera size={21} />
 
                 <div>
                   <strong>
-                    Add photos
+                    {photoFiles.length >
+                    0
+                      ? `${photoFiles.length} photo${
+                          photoFiles.length ===
+                          1
+                            ? ""
+                            : "s"
+                        } selected`
+                      : "Add photos"}
                   </strong>
 
-                  <span>
-                    Choose up to 8 photos
+                  <span
+                    style={
+                      styles.photoButtonHint
+                    }
+                  >
+                    Choose up to 8
                   </span>
                 </div>
 
@@ -1330,121 +1609,97 @@ export default function Home() {
                   accept="image/*"
                   multiple
                   style={{
-                    display: "none",
+                    display:
+                      "none",
                   }}
-                  onChange={(e) =>
-                    handlePhotos(
-                      e.target.files
-                    )
+                  onChange={
+                    handlePhotoChange
                   }
                 />
               </label>
-
-              {/* PHOTO PREVIEWS */}
 
               {photoPreviews.length >
                 0 && (
                 <div
                   style={
-                    styles.previewSection
+                    styles.previewGrid
                   }
                 >
-                  <div
-                    style={
-                      styles.previewHeader
-                    }
-                  >
-                    <span>
-                      Selected photos
-                    </span>
+                  {photoPreviews.map(
+                    (
+                      preview,
+                      index
+                    ) => (
+                      <div
+                        key={preview}
+                        style={
+                          styles.previewItem
+                        }
+                      >
+                        <img
+                          src={preview}
+                          alt={`Selected photo ${
+                            index + 1
+                          }`}
+                          style={
+                            styles.previewImage
+                          }
+                        />
 
-                    <span>
-                      {
-                        photoPreviews.length
-                      }/8
-                    </span>
-                  </div>
-
-                  <div
-                    style={
-                      styles.previewGrid
-                    }
-                  >
-                    {photoPreviews.map(
-                      (
-                        preview,
-                        index
-                      ) => (
-                        <div
-                          key={
-                            preview
+                        <button
+                          type="button"
+                          onClick={() =>
+                            removeSelectedPhoto(
+                              index
+                            )
                           }
                           style={
-                            styles.previewItem
+                            styles.previewRemove
                           }
                         >
-                          <img
-                            src={preview}
-                            alt=""
-                            style={
-                              styles.previewImage
-                            }
+                          <X
+                            size={15}
                           />
+                        </button>
 
-                          <button
-                            onClick={() =>
-                              removePhoto(
-                                index
-                              )
-                            }
+                        {index ===
+                          0 && (
+                          <span
                             style={
-                              styles.previewRemove
+                              styles.previewMain
                             }
-                            type="button"
                           >
-                            <X
-                              size={15}
-                            />
-                          </button>
-
-                          {index ===
-                            0 && (
-                            <div
-                              style={
-                                styles.coverLabel
-                              }
-                            >
-                              MAIN
-                            </div>
-                          )}
-                        </div>
-                      )
-                    )}
-                  </div>
+                            Main
+                          </span>
+                        )}
+                      </div>
+                    )
+                  )}
                 </div>
               )}
 
               <button
-                onClick={postCatch}
-                disabled={posting}
+                onClick={
+                  postCatch
+                }
+                disabled={
+                  posting
+                }
                 style={{
                   ...styles.submitButton,
                   opacity:
-                    posting ? 0.7 : 1,
+                    posting
+                      ? 0.65
+                      : 1,
                 }}
               >
                 {posting ? (
-                  <>
-                    <span
-                      style={
-                        styles.spinner
-                      }
-                    />
-                    Posting Catch...
-                  </>
+                  "Posting Catch..."
                 ) : (
                   <>
-                    <Fish size={19} />
+                    <Fish
+                      size={19}
+                    />
                     Post Catch
                   </>
                 )}
@@ -1458,113 +1713,123 @@ export default function Home() {
           PHOTO VIEWER
       ========================= */}
 
-      {viewerOpen &&
-        viewerPhotos.length >
-          0 && (
+      {viewer && (
+        <div
+          style={
+            styles.viewerBackground
+          }
+          onMouseDown={(event) => {
+            if (
+              event.target ===
+              event.currentTarget
+            ) {
+              closeViewer();
+            }
+          }}
+        >
           <div
             style={
-              styles.viewerBackground
+              styles.viewer
             }
-            onClick={(e) => {
-              if (
-                e.target ===
-                e.currentTarget
-              ) {
-                closeViewer();
-              }
-            }}
           >
             <div
               style={
                 styles.viewerTop
               }
             >
-              <div
-                style={
-                  styles.viewerCounter
-                }
-              >
-                {viewerIndex + 1} /{" "}
-                {viewerPhotos.length}
+              <div>
+                <div
+                  style={
+                    styles.viewerEyebrow
+                  }
+                >
+                  {viewer.item.name}
+                </div>
+
+                <h2
+                  style={
+                    styles.viewerTitle
+                  }
+                >
+                  {
+                    viewer.item
+                      .fish_species
+                  }
+                </h2>
               </div>
 
               <button
-                onClick={closeViewer}
+                onClick={
+                  closeViewer
+                }
                 style={
                   styles.viewerClose
                 }
               >
-                <X size={25} />
+                <X size={23} />
               </button>
             </div>
 
-            <button
-              onClick={
-                previousPhoto
-              }
-              style={
-                styles.viewerArrowLeft
-              }
-              aria-label="Previous photo"
-            >
-              <ChevronLeft
-                size={30}
-              />
-            </button>
-
             <div
               style={
-                styles.viewerImageWrap
+                styles.viewerImageArea
+              }
+              onWheel={
+                handleImageWheel
               }
             >
+              {viewer.photos.length >
+                1 && (
+                <button
+                  onClick={
+                    previousPhoto
+                  }
+                  style={{
+                    ...styles.viewerArrow,
+                    left: "14px",
+                  }}
+                  aria-label="Previous photo"
+                >
+                  <ChevronLeft
+                    size={28}
+                  />
+                </button>
+              )}
+
               <img
                 src={
-                  viewerPhotos[
-                    viewerIndex
+                  viewer.photos[
+                    viewer.index
                   ]
                 }
-                alt="Fishing catch"
+                alt={
+                  viewer.item
+                    .fish_species
+                }
                 style={{
                   ...styles.viewerImage,
                   transform: `scale(${zoom})`,
                 }}
-                onWheel={(e) => {
-                  e.preventDefault();
+              />
 
-                  if (
-                    e.deltaY < 0
-                  ) {
-                    setZoom(
-                      (z) =>
-                        Math.min(
-                          z + 0.15,
-                          3
-                        )
-                    );
-                  } else {
-                    setZoom(
-                      (z) =>
-                        Math.max(
-                          z - 0.15,
-                          1
-                        )
-                    );
+              {viewer.photos.length >
+                1 && (
+                <button
+                  onClick={
+                    nextPhoto
                   }
-                }}
-              />
+                  style={{
+                    ...styles.viewerArrow,
+                    right: "14px",
+                  }}
+                  aria-label="Next photo"
+                >
+                  <ChevronRight
+                    size={28}
+                  />
+                </button>
+              )}
             </div>
-
-            <button
-              onClick={nextPhoto}
-              style={
-                styles.viewerArrowRight
-              }
-              aria-label="Next photo"
-            >
-              <ChevronRight
-                size={30}
-              />
-            </button>
 
             <div
               style={
@@ -1572,21 +1837,15 @@ export default function Home() {
               }
             >
               <button
-                onClick={() =>
-                  setZoom(
-                    (z) =>
-                      Math.max(
-                        z - 0.25,
-                        1
-                      )
-                  )
+                onClick={
+                  zoomOut
                 }
                 style={
                   styles.viewerControl
                 }
               >
                 <ZoomOut
-                  size={19}
+                  size={18}
                 />
               </button>
 
@@ -1602,243 +1861,114 @@ export default function Home() {
               </span>
 
               <button
-                onClick={() =>
-                  setZoom(
-                    (z) =>
-                      Math.min(
-                        z + 0.25,
-                        3
-                      )
-                  )
+                onClick={
+                  zoomIn
                 }
                 style={
                   styles.viewerControl
                 }
               >
                 <ZoomIn
-                  size={19}
+                  size={18}
+                />
+              </button>
+
+              <button
+                onClick={
+                  resetZoom
+                }
+                style={
+                  styles.viewerControl
+                }
+              >
+                <RotateCcw
+                  size={17}
                 />
               </button>
             </div>
 
-            {viewerPhotos.length >
+            {viewer.photos.length >
               1 && (
               <div
                 style={
-                  styles.viewerThumbnails
+                  styles.viewerCounter
                 }
               >
-                {viewerPhotos.map(
-                  (
-                    url,
-                    index
-                  ) => (
-                    <button
-                      key={index}
-                      onClick={() => {
-                        setViewerIndex(
-                          index
-                        );
-                        setZoom(1);
-                      }}
-                      style={{
-                        ...styles.viewerThumbnail,
-                        ...(index ===
-                        viewerIndex
-                          ? styles.viewerThumbnailActive
-                          : {}),
-                      }}
-                    >
-                      <img
-                        src={url}
-                        alt=""
-                        style={
-                          styles.viewerThumbnailImage
-                        }
-                      />
-                    </button>
-                  )
-                )}
+                Photo{" "}
+                {viewer.index + 1}{" "}
+                of{" "}
+                {
+                  viewer.photos
+                    .length
+                }
               </div>
             )}
-          </div>
-        )}
 
-      {/* =========================
-          CATCH DETAILS
-      ========================= */}
-
-      {selectedCatch && (
-        <div
-          style={
-            styles.detailsBackground
-          }
-          onClick={(e) => {
-            if (
-              e.target ===
-              e.currentTarget
-            ) {
-              setSelectedCatch(null);
-            }
-          }}
-        >
-          <div
-            style={
-              styles.detailsModal
-            }
-          >
             <div
+              className="viewer-info"
               style={
-                styles.detailsHeader
+                styles.viewerInfo
               }
             >
-              <div>
-                <div
-                  style={
-                    styles.sectionEyebrow
-                  }
-                >
-                  CATCH DETAILS
+              <div
+                style={
+                  styles.viewerMetadata
+                }
+              >
+                <div>
+                  <span>
+                    LENGTH
+                  </span>
+
+                  <strong>
+                    {
+                      viewer.item
+                        .length
+                    }{" "}
+                    in
+                  </strong>
                 </div>
 
-                <h2
+                <div>
+                  <span>
+                    WEIGHT
+                  </span>
+
+                  <strong>
+                    {viewer.item
+                      .weight !==
+                    null
+                      ? `${viewer.item.weight} lb`
+                      : "—"}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>
+                    LAKE
+                  </span>
+
+                  <strong>
+                    {
+                      viewer.item
+                        .lake
+                    }
+                  </strong>
+                </div>
+              </div>
+
+              {viewer.item
+                .caption && (
+                <p
                   style={
-                    styles.detailsTitle
+                    styles.viewerCaption
                   }
                 >
                   {
-                    selectedCatch.fish_species
+                    viewer.item
+                      .caption
                   }
-                </h2>
-              </div>
-
-              <button
-                onClick={() =>
-                  setSelectedCatch(null)
-                }
-                style={
-                  styles.closeButton
-                }
-              >
-                <X size={21} />
-              </button>
-            </div>
-
-            {getPhotoUrls(
-              selectedCatch.image_url
-            ).length > 0 && (
-              <button
-                onClick={() =>
-                  openViewer(
-                    getPhotoUrls(
-                      selectedCatch.image_url
-                    )
-                  )
-                }
-                style={
-                  styles.detailsPhotoButton
-                }
-              >
-                <img
-                  src={
-                    getPhotoUrls(
-                      selectedCatch.image_url
-                    )[0]
-                  }
-                  alt={
-                    selectedCatch.fish_species
-                  }
-                  style={
-                    styles.detailsPhoto
-                  }
-                />
-
-                <div
-                  style={
-                    styles.detailsPhotoOverlay
-                  }
-                >
-                  <ZoomIn size={19} />
-                  View all photos
-                </div>
-              </button>
-            )}
-
-            <div
-              style={
-                styles.detailsPerson
-              }
-            >
-              Caught by{" "}
-              <strong>
-                {selectedCatch.name}
-              </strong>
-            </div>
-
-            <div
-              style={
-                styles.detailsStats
-              }
-            >
-              <div
-                style={
-                  styles.detailsStat
-                }
-              >
-                <span>LENGTH</span>
-                <strong>
-                  — {selectedCatch.length}"
-                </strong>
-              </div>
-
-              {selectedCatch.weight !==
-                null && (
-                <div
-                  style={
-                    styles.detailsStat
-                  }
-                >
-                  <span>WEIGHT</span>
-                  <strong>
-                    —{" "}
-                    {
-                      selectedCatch.weight
-                    }{" "}
-                    lbs
-                  </strong>
-                </div>
-              )}
-
-              <div
-                style={
-                  styles.detailsStat
-                }
-              >
-                <span>LAKE</span>
-                <strong>
-                  — {selectedCatch.lake}
-                </strong>
-              </div>
-            </div>
-
-            {selectedCatch.caption && (
-              <p
-                style={
-                  styles.detailsCaption
-                }
-              >
-                {selectedCatch.caption}
-              </p>
-            )}
-
-            <div
-              style={
-                styles.detailsDate
-              }
-            >
-              Posted{" "}
-              {formatDate(
-                selectedCatch.created_at
+                </p>
               )}
             </div>
           </div>
@@ -1848,9 +1978,9 @@ export default function Home() {
   );
 }
 
-/* =========================================
+/* =========================================================
    STYLES
-========================================= */
+========================================================= */
 
 const styles: Record<
   string,
@@ -1859,121 +1989,21 @@ const styles: Record<
   page: {
     minHeight: "100vh",
     background: colors.cream,
-    color: colors.ink,
-    paddingBottom: "95px",
+    color: colors.textDark,
+    paddingBottom: "92px",
     fontFamily:
       "Arial, Helvetica, sans-serif",
   },
 
-  /* ACCESS */
-
-  accessPage: {
-    minHeight: "100vh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "24px",
-    boxSizing: "border-box",
-    background:
-      "linear-gradient(145deg, #071D17, #153E48 55%, #E97845)",
-  },
-
-  accessCard: {
-    width: "100%",
-    maxWidth: "430px",
-    padding: "38px 28px",
-    boxSizing: "border-box",
-    borderRadius: "30px",
-    textAlign: "center",
-    background:
-      "rgba(255,253,247,0.96)",
-    boxShadow:
-      "0 30px 90px rgba(0,0,0,0.35)",
-  },
-
-  accessLogoWrap: {
-    width: "120px",
-    height: "120px",
-    margin: "0 auto 18px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  accessLogo: {
-    width: "115px",
-    height: "115px",
-    objectFit: "contain",
-  },
-
-  accessEyebrow: {
-    color: colors.sunset,
-    fontSize: "10px",
-    fontWeight: 900,
-    letterSpacing: "3px",
-  },
-
-  accessTitle: {
-    margin: "8px 0 5px",
-    fontSize: "42px",
-    lineHeight: 1,
-    fontWeight: 950,
-    letterSpacing: "-2px",
-    color: colors.forest,
-  },
-
-  accessText: {
-    margin: "0 0 25px",
-    color: colors.muted,
-    fontSize: "14px",
-  },
-
-  accessInput: {
-    width: "100%",
-    boxSizing: "border-box",
-    padding: "15px",
-    borderRadius: "14px",
-    border:
-      "1px solid rgba(23,49,42,0.18)",
-    background: "#FFFFFF",
-    color: colors.ink,
-    fontSize: "16px",
-    outline: "none",
-  },
-
-  codeError: {
-    marginTop: "10px",
-    color: "#B42318",
-    fontSize: "13px",
-    fontWeight: 700,
-  },
-
-  accessButton: {
-    width: "100%",
-    marginTop: "13px",
-    padding: "16px",
-    border: "none",
-    borderRadius: "14px",
-    background: colors.forest,
-    color: colors.white,
-    fontSize: "15px",
-    fontWeight: 900,
-    cursor: "pointer",
-  },
-
-  accessFooter: {
-    marginTop: "23px",
-    color: colors.muted,
-    fontSize: "12px",
-  },
-
-  /* HERO */
+  /* =========================
+     HERO
+  ========================= */
 
   hero: {
     position: "relative",
-    minHeight: "610px",
+    minHeight: "620px",
     overflow: "hidden",
-    color: colors.white,
+    color: "#fff",
   },
 
   heroImage: {
@@ -1983,166 +2013,128 @@ const styles: Record<
       "url('/minnesota-sunset.jpg.png')",
     backgroundSize: "cover",
     backgroundPosition: "center",
+    transform: "scale(1.02)",
   },
 
   heroOverlay: {
     position: "absolute",
     inset: 0,
     background:
-      "linear-gradient(to bottom, rgba(7,29,23,0.18), rgba(7,29,23,0.48) 48%, rgba(7,29,23,0.96) 100%)",
-  },
-
-  heroGlowOne: {
-    position: "absolute",
-    width: "300px",
-    height: "300px",
-    borderRadius: "50%",
-    background:
-      "rgba(233,185,73,0.18)",
-    filter: "blur(80px)",
-    top: "10%",
-    right: "-100px",
-  },
-
-  heroGlowTwo: {
-    position: "absolute",
-    width: "260px",
-    height: "260px",
-    borderRadius: "50%",
-    background:
-      "rgba(40,107,120,0.22)",
-    filter: "blur(80px)",
-    bottom: "-100px",
-    left: "-90px",
+      "linear-gradient(to bottom, rgba(5,18,12,0.20) 0%, rgba(5,18,12,0.36) 45%, rgba(7,19,14,0.94) 100%)",
   },
 
   heroContent: {
     position: "relative",
     zIndex: 2,
-    maxWidth: "920px",
+    maxWidth: "900px",
     margin: "0 auto",
-    minHeight: "610px",
-    padding: "26px 20px 30px",
-    boxSizing: "border-box",
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "space-between",
-  },
-
-  heroTop: {
-    display: "flex",
-    justifyContent: "center",
-  },
-
-  heroBadge: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "8px",
-    padding: "8px 13px",
-    borderRadius: "999px",
-    background:
-      "rgba(7,29,23,0.45)",
-    border:
-      "1px solid rgba(255,255,255,0.2)",
-    backdropFilter: "blur(12px)",
-    fontSize: "10px",
-    fontWeight: 900,
-    letterSpacing: "2px",
-  },
-
-  liveDot: {
-    width: "7px",
-    height: "7px",
-    borderRadius: "50%",
-    background: colors.gold,
-    boxShadow:
-      "0 0 12px rgba(233,185,73,0.9)",
-  },
-
-  centerHero: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
+    padding:
+      "42px 22px 38px",
     textAlign: "center",
   },
 
-  logoRing: {
-    width: "142px",
-    height: "142px",
-    borderRadius: "50%",
+  heroTopLabel: {
+    display: "inline-block",
+    padding:
+      "8px 13px",
+    border:
+      "1px solid rgba(255,255,255,0.35)",
+    borderRadius: "999px",
+    background:
+      "rgba(0,0,0,0.18)",
+    color:
+      "rgba(255,255,255,0.9)",
+    fontSize: "10px",
+    fontWeight: 900,
+    letterSpacing: "2.5px",
+  },
+
+  fishLogo: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    margin:
+      "22px auto 4px",
     background:
-      "rgba(7,29,23,0.35)",
-    border:
-      "1px solid rgba(255,255,255,0.3)",
-    boxShadow:
-      "0 20px 60px rgba(0,0,0,0.3)",
-    backdropFilter: "blur(10px)",
+      "transparent",
+    border: "none",
+    boxShadow: "none",
   },
 
   logoImage: {
-    width: "125px",
-    height: "125px",
+    width: "170px",
+    height: "170px",
     objectFit: "contain",
-  },
-
-  titleSmall: {
-    marginTop: "22px",
-    color: colors.gold,
-    fontSize: "10px",
-    fontWeight: 900,
-    letterSpacing: "4px",
+    display: "block",
   },
 
   title: {
-    margin: "8px 0 0",
-    fontSize:
-      "clamp(46px, 10vw, 76px)",
-    lineHeight: 0.95,
-    fontWeight: 950,
-    letterSpacing: "-4px",
+    margin:
+      "5px 0 0",
+    fontSize: "52px",
+    lineHeight: 1,
+    fontWeight: 900,
+    letterSpacing: "-2.5px",
     textShadow:
-      "0 5px 25px rgba(0,0,0,0.35)",
+      "0 5px 22px rgba(0,0,0,0.35)",
   },
 
   subtitle: {
-    margin: "15px 0 0",
+    margin:
+      "13px 0 0",
     fontSize: "15px",
     color:
-      "rgba(255,255,255,0.8)",
+      "rgba(255,255,255,0.84)",
+    letterSpacing: "0.3px",
   },
 
-  heroBottom: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "11px",
-  },
-
-  locationCard: {
-    display: "flex",
-    alignItems: "center",
-    gap: "13px",
-    padding: "15px",
-    borderRadius: "18px",
-    background:
-      "rgba(7,29,23,0.63)",
-    border:
-      "1px solid rgba(255,255,255,0.18)",
-    backdropFilter: "blur(14px)",
-  },
-
-  locationIcon: {
-    width: "45px",
-    height: "45px",
-    flexShrink: 0,
+  heroRule: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: "14px",
-    background: colors.gold,
-    color: colors.forest,
+    gap: "10px",
+    margin:
+      "20px auto 0",
+    width: "170px",
+  },
+
+  heroRuleDot: {
+    color: colors.gold,
+    fontSize: "18px",
+  },
+
+  locationCard: {
+    margin:
+      "43px auto 0",
+    maxWidth: "540px",
+    display: "flex",
+    alignItems: "center",
+    gap: "14px",
+    padding: "16px",
+    textAlign: "left",
+    borderRadius: "16px",
+    background:
+      "rgba(8,29,19,0.76)",
+    border:
+      "1px solid rgba(255,255,255,0.22)",
+    backdropFilter:
+      "blur(14px)",
+    boxShadow:
+      "0 18px 45px rgba(0,0,0,0.28)",
+  },
+
+  locationIcon: {
+    flexShrink: 0,
+    width: "46px",
+    height: "46px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: "50%",
+    background:
+      colors.gold,
+    color:
+      colors.darkForest,
   },
 
   locationLabel: {
@@ -2150,7 +2142,7 @@ const styles: Record<
     fontWeight: 900,
     letterSpacing: "2px",
     color:
-      "rgba(255,255,255,0.55)",
+      "rgba(255,255,255,0.58)",
   },
 
   locationTitle: {
@@ -2160,322 +2152,417 @@ const styles: Record<
   },
 
   locationSub: {
-    marginTop: "2px",
+    marginTop: "3px",
     fontSize: "12px",
     color:
-      "rgba(255,255,255,0.6)",
+      "rgba(255,255,255,0.62)",
   },
 
   postButton: {
     width: "100%",
-    padding: "17px",
-    border: "none",
-    borderRadius: "16px",
+    maxWidth: "540px",
+    margin:
+      "12px auto 0",
+    padding: "17px 20px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     gap: "9px",
-    background: colors.sunset,
-    color: colors.white,
+    border: "none",
+    borderRadius: "13px",
+    background:
+      colors.orange,
+    color: "#fff",
     fontSize: "16px",
     fontWeight: 900,
     cursor: "pointer",
     boxShadow:
-      "0 12px 30px rgba(233,120,69,0.28)",
+      "0 10px 25px rgba(201,106,61,0.24)",
+    transition:
+      "all 0.2s ease",
   },
 
-  /* FEED */
+  /* =========================
+     FEED
+  ========================= */
 
   feed: {
-    maxWidth: "900px",
+    maxWidth: "980px",
     margin: "0 auto",
-    padding: "34px 18px",
+    padding:
+      "32px 20px 40px",
   },
 
-  sectionHeader: {
+  feedIntro: {
     display: "flex",
     alignItems: "flex-end",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
     marginBottom: "22px",
   },
 
   sectionEyebrow: {
-    color: colors.sunset,
+    color:
+      colors.orange,
     fontSize: "10px",
-    fontWeight: 950,
-    letterSpacing: "3px",
+    fontWeight: 900,
+    letterSpacing: "2.6px",
   },
 
   sectionTitle: {
-    margin: "6px 0 0",
-    fontSize: "32px",
+    margin:
+      "5px 0 0",
+    fontSize: "30px",
     lineHeight: 1,
-    fontWeight: 950,
-    letterSpacing: "-1.5px",
-    color: colors.forest,
+    fontWeight: 900,
+    color:
+      colors.forest,
+    letterSpacing:
+      "-1px",
   },
 
   sectionDescription: {
-    margin: "8px 0 0",
-    color: colors.muted,
+    margin:
+      "8px 0 0",
+    color:
+      colors.muted,
     fontSize: "13px",
   },
 
-  sectionIcon: {
-    width: "46px",
-    height: "46px",
+  fishBadge: {
+    width: "48px",
+    height: "48px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: "15px",
-    background: colors.forest,
-    color: colors.gold,
+    borderRadius: "14px",
+    background:
+      colors.forest,
+    color:
+      colors.gold,
+    boxShadow:
+      "0 8px 20px rgba(23,58,42,0.15)",
   },
 
   loadingCard: {
-    padding: "45px 20px",
-    borderRadius: "22px",
-    textAlign: "center",
-    color: colors.muted,
-    background: colors.paper,
-    border:
-      "1px solid rgba(23,49,42,0.1)",
+    minHeight: "160px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "12px",
+    color:
+      colors.muted,
   },
 
-  loadingCircle: {
-    width: "48px",
-    height: "48px",
-    margin: "0 auto 12px",
+  emptyCard: {
+    padding:
+      "45px 20px",
+    border:
+      `1px solid ${colors.line}`,
+    borderRadius: "18px",
+    background:
+      colors.warmWhite,
+    textAlign: "center",
+  },
+
+  emptyIcon: {
+    width: "76px",
+    height: "76px",
+    margin:
+      "0 auto 15px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     borderRadius: "50%",
-    background: colors.forest,
-    color: colors.gold,
+    background:
+      "#E5EEE8",
+    color:
+      colors.forest,
   },
 
-  emptyCard: {
-    padding: "50px 25px",
-    borderRadius: "24px",
-    textAlign: "center",
-    background: colors.paper,
-    border:
-      "1px solid rgba(23,49,42,0.1)",
+  emptyTitle: {
+    margin: 0,
+    color:
+      colors.forest,
+    fontSize: "23px",
+  },
+
+  emptyText: {
+    margin:
+      "8px 0 20px",
+    color:
+      colors.muted,
   },
 
   emptyButton: {
-    marginTop: "12px",
-    padding: "12px 17px",
-    border: "none",
-    borderRadius: "12px",
     display: "inline-flex",
     alignItems: "center",
     gap: "7px",
-    background: colors.forest,
-    color: colors.white,
+    padding:
+      "12px 16px",
+    border: "none",
+    borderRadius: "10px",
+    background:
+      colors.forest,
+    color: "#fff",
     fontWeight: 800,
     cursor: "pointer",
   },
 
-  /* CATCH CARD */
+  /* =========================
+     CATCH CARD
+  ========================= */
 
   catchCard: {
     position: "relative",
     overflow: "hidden",
-    marginBottom: "22px",
-    borderRadius: "25px",
-    background: colors.paper,
+    marginBottom: "18px",
     border:
-      "1px solid rgba(23,49,42,0.1)",
+      `1px solid ${colors.line}`,
+    borderRadius: "18px",
+    background:
+      colors.warmWhite,
     boxShadow:
-      "0 15px 40px rgba(23,49,42,0.09)",
+      "0 12px 35px rgba(37,45,39,0.10)",
   },
 
-  catchCardNew: {
-    boxShadow:
-      "0 0 0 3px rgba(233,185,73,0.65), 0 25px 65px rgba(233,185,73,0.3)",
-  },
-
-  photoGallery: {
+  photoSection: {
     position: "relative",
-    width: "100%",
-    background: "#0B1714",
+    background:
+      "#111B16",
   },
 
   mainPhotoButton: {
     position: "relative",
-    display: "block",
     width: "100%",
+    minHeight: "280px",
+    maxHeight: "520px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     padding: 0,
     border: "none",
-    background: "#0B1714",
-    cursor: "pointer",
+    background:
+      "#111B16",
+    cursor: "zoom-in",
     overflow: "hidden",
   },
 
   catchImage: {
     width: "100%",
-    maxHeight: "600px",
-    minHeight: "220px",
-    display: "block",
+    height: "auto",
+    maxHeight: "520px",
     objectFit: "contain",
-    background: "#0B1714",
-  },
-
-  photoShade: {
-    position: "absolute",
-    inset: 0,
-    pointerEvents: "none",
-    background:
-      "linear-gradient(to bottom, transparent 65%, rgba(0,0,0,0.42))",
+    display: "block",
+    transition:
+      "transform 0.25s ease",
   },
 
   photoOpenHint: {
     position: "absolute",
-    right: "13px",
-    bottom: "13px",
+    right: "12px",
+    bottom: "12px",
     display: "flex",
     alignItems: "center",
     gap: "6px",
-    padding: "8px 11px",
+    padding:
+      "7px 10px",
     borderRadius: "999px",
     background:
-      "rgba(7,29,23,0.7)",
-    color: colors.white,
+      "rgba(0,0,0,0.68)",
+    color: "#fff",
     fontSize: "11px",
     fontWeight: 800,
-    backdropFilter: "blur(8px)",
-  },
-
-  photoCount: {
-    position: "absolute",
-    top: "13px",
-    right: "13px",
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    padding: "8px 10px",
-    borderRadius: "999px",
-    background:
-      "rgba(7,29,23,0.72)",
-    color: colors.white,
-    fontSize: "11px",
-    fontWeight: 900,
-    backdropFilter: "blur(8px)",
   },
 
   thumbnailRow: {
     display: "flex",
-    gap: "7px",
-    padding: "8px",
+    alignItems: "center",
+    gap: "8px",
+    padding:
+      "10px 12px",
     overflowX: "auto",
-    background: "#0B1714",
-  },
-
-  thumbnailButton: {
-    width: "64px",
-    height: "54px",
-    flexShrink: 0,
-    padding: 0,
-    border: "1px solid rgba(255,255,255,0.18)",
-    borderRadius: "8px",
-    overflow: "hidden",
-    background: "#17221F",
-    cursor: "pointer",
+    background:
+      "#0D1712",
   },
 
   thumbnail: {
+    position: "relative",
+    flexShrink: 0,
+    width: "60px",
+    height: "52px",
+    padding: 0,
+    border:
+      "1px solid rgba(255,255,255,0.18)",
+    borderRadius: "8px",
+    overflow: "hidden",
+    background:
+      "#17221B",
+    cursor: "pointer",
+    transition:
+      "all 0.2s ease",
+  },
+
+  thumbnailImage: {
     width: "100%",
     height: "100%",
     objectFit: "cover",
     display: "block",
   },
 
+  coverPhotoLabel: {
+    position: "absolute",
+    left: "4px",
+    bottom: "4px",
+    padding:
+      "2px 4px",
+    borderRadius: "4px",
+    background:
+      "rgba(0,0,0,0.68)",
+    color: "#fff",
+    fontSize: "7px",
+    fontWeight: 900,
+    textTransform:
+      "uppercase",
+  },
+
+  photoCount: {
+    flexShrink: 0,
+    marginLeft: "2px",
+    color:
+      "rgba(255,255,255,0.58)",
+    fontSize: "11px",
+    fontWeight: 800,
+  },
+
   catchContent: {
-    padding: "20px",
+    padding: "18px",
   },
 
   catchHeader: {
     display: "flex",
     alignItems: "flex-start",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
+    gap: "12px",
   },
 
   catchPerson: {
-    color: colors.sunset,
+    color:
+      colors.orange,
     fontSize: "12px",
     fontWeight: 900,
-    textTransform: "uppercase",
-    letterSpacing: "1px",
+    letterSpacing:
+      "0.4px",
   },
 
   fishName: {
-    margin: "4px 0 0",
-    fontSize: "28px",
-    lineHeight: 1,
-    fontWeight: 950,
-    letterSpacing: "-1px",
-    color: colors.forest,
+    margin:
+      "3px 0 0",
+    color:
+      colors.forest,
+    fontSize: "26px",
+    lineHeight: 1.05,
+    fontWeight: 900,
+    letterSpacing:
+      "-0.8px",
   },
 
-  fishBadge: {
-    width: "40px",
-    height: "40px",
+  catchActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: "9px",
+  },
+
+  deleteButton: {
+    width: "35px",
+    height: "35px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: "13px",
+    border:
+      "1px solid rgba(185,74,66,0.20)",
+    borderRadius: "9px",
     background:
-      "rgba(233,185,73,0.16)",
-    color: colors.forest,
+      "rgba(185,74,66,0.06)",
+    color:
+      colors.red,
+    cursor: "pointer",
+    transition:
+      "all 0.2s ease",
   },
 
   catchStats: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "9px",
-    marginTop: "18px",
+    display: "grid",
+    gridTemplateColumns:
+      "1fr 1fr 1.4fr",
+    gap: "10px",
+    marginTop: "17px",
     padding:
-      "15px 0",
+      "13px 0",
     borderTop:
-      "1px solid rgba(23,49,42,0.09)",
+      `1px solid ${colors.line}`,
     borderBottom:
-      "1px solid rgba(23,49,42,0.09)",
+      `1px solid ${colors.line}`,
   },
 
-  statBlock: {
+  catchStat: {
     display: "flex",
-    alignItems: "baseline",
-    gap: "7px",
-    flexWrap: "wrap",
+    flexDirection: "column",
+    gap: "4px",
+    minWidth: 0,
   },
 
   statLabel: {
-    minWidth: "62px",
-    color: colors.muted,
-    fontSize: "9px",
-    fontWeight: 950,
-    letterSpacing: "1.7px",
+    color:
+      colors.muted,
+    fontSize: "8px",
+    fontWeight: 900,
+    letterSpacing: "1.8px",
   },
 
   statValue: {
-    color: colors.ink,
+    color:
+      colors.forest,
     fontSize: "14px",
     fontWeight: 900,
+    overflow: "hidden",
+    textOverflow:
+      "ellipsis",
+    whiteSpace:
+      "nowrap",
+  },
+
+  metadataLine: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: "7px",
+    marginTop: "13px",
+    color:
+      colors.muted,
+    fontSize: "11px",
+    fontWeight: 700,
   },
 
   caption: {
-    margin: "16px 0 0",
-    color: "#52605A",
-    lineHeight: 1.6,
+    margin:
+      "14px 0 0",
+    color:
+      "#455249",
     fontSize: "14px",
+    lineHeight: 1.55,
   },
 
-  postFooter: {
+  social: {
     display: "flex",
     alignItems: "center",
-    gap: "15px",
-    marginTop: "17px",
+    gap: "16px",
+    marginTop: "15px",
+    paddingTop:
+      "13px",
+    borderTop:
+      `1px solid ${colors.line}`,
   },
 
   socialButton: {
@@ -2484,32 +2571,21 @@ const styles: Record<
     gap: "6px",
     padding: 0,
     border: "none",
-    background: "transparent",
-    color: colors.muted,
-    fontSize: "12px",
-    fontWeight: 800,
-    cursor: "pointer",
-  },
-
-  detailsButton: {
-    padding: "8px 11px",
-    border: "none",
-    borderRadius: "9px",
     background:
-      "rgba(18,53,42,0.08)",
-    color: colors.forest,
-    fontSize: "11px",
-    fontWeight: 900,
+      "transparent",
+    color:
+      colors.muted,
+    fontSize: "12px",
+    fontWeight: 700,
     cursor: "pointer",
   },
 
   time: {
     marginLeft: "auto",
-    color: "#9AA29E",
+    color:
+      "#9A9F99",
     fontSize: "11px",
   },
-
-  /* BUBBLES */
 
   bubbleLayer: {
     position: "absolute",
@@ -2521,75 +2597,79 @@ const styles: Record<
 
   bubble: {
     position: "absolute",
-    bottom: "-30px",
+    bottom: "20%",
     border:
-      "2px solid rgba(255,255,255,0.75)",
-    background:
-      "rgba(190,235,239,0.18)",
+      "2px solid rgba(255,255,255,0.7)",
     borderRadius: "50%",
-    animationName: "bubbleFloat",
-    animationTimingFunction: "ease-out",
-    animationIterationCount: 1,
-  },
+    background:
+      "rgba(255,255,255,0.12)",
+    animation:
+      "bubbleRise 2.5s ease-out forwards",
+    "--drift": "0px",
+  } as React.CSSProperties,
 
-  /* TRIP STATS */
+  /* =========================
+     TRIP STATS
+  ========================= */
 
   tripCard: {
-    marginTop: "32px",
-    padding: "23px",
-    borderRadius: "24px",
+    marginTop: "28px",
+    padding: "20px",
+    borderRadius: "17px",
     background:
-      "linear-gradient(145deg, #12352A, #153E48)",
-    color: colors.white,
+      colors.forest,
+    color: "#fff",
     boxShadow:
-      "0 18px 45px rgba(18,53,42,0.18)",
+      "0 12px 28px rgba(23,58,42,0.16)",
   },
 
   tripHeader: {
     display: "flex",
     alignItems: "center",
-    gap: "12px",
+    gap: "11px",
   },
 
-  tripIcon: {
+  trophyCircle: {
     width: "43px",
     height: "43px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: "13px",
-    background: colors.gold,
-    color: colors.forest,
-  },
-
-  tripEyebrow: {
-    fontSize: "9px",
-    fontWeight: 900,
-    letterSpacing: "2px",
+    borderRadius: "12px",
+    background:
+      "rgba(217,164,65,0.15)",
     color:
-      "rgba(255,255,255,0.55)",
+      colors.gold,
   },
 
   tripTitle: {
-    margin: "2px 0 0",
-    fontSize: "21px",
+    margin:
+      "3px 0 0",
+    fontSize: "23px",
+    fontWeight: 900,
   },
 
   tripStats: {
     display: "grid",
     gridTemplateColumns:
-      "repeat(3, 1fr)",
-    marginTop: "25px",
-    textAlign: "center",
+      "repeat(3,1fr)",
+    marginTop: "22px",
+    paddingTop: "17px",
+    borderTop:
+      "1px solid rgba(255,255,255,0.12)",
   },
 
   tripStat: {
     display: "flex",
     flexDirection: "column",
-    gap: "4px",
+    alignItems: "center",
+    gap: "5px",
+    textAlign: "center",
   },
 
-  /* NAV */
+  /* =========================
+     NAV
+  ========================= */
 
   nav: {
     position: "fixed",
@@ -2597,46 +2677,58 @@ const styles: Record<
     bottom: 0,
     left: 0,
     right: 0,
-    height: "76px",
+    height: "75px",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    gap: "clamp(22px, 8vw, 70px)",
+    gap: "55px",
     background:
-      "rgba(7,29,23,0.96)",
+      "rgba(12,33,24,0.97)",
     borderTop:
-      "1px solid rgba(255,255,255,0.1)",
-    backdropFilter: "blur(18px)",
+      "1px solid rgba(255,255,255,0.10)",
+    boxShadow:
+      "0 -8px 25px rgba(0,0,0,0.12)",
+    backdropFilter:
+      "blur(16px)",
   },
 
   navActive: {
-    border: "none",
-    background: "transparent",
-    color: colors.gold,
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     gap: "4px",
+    padding: 0,
+    border: "none",
+    background:
+      "transparent",
+    color:
+      colors.gold,
     fontSize: "10px",
     fontWeight: 900,
     cursor: "pointer",
   },
 
   navItem: {
-    border: "none",
-    background: "transparent",
-    color:
-      "rgba(255,255,255,0.45)",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     gap: "4px",
+    padding: 0,
+    border: "none",
+    background:
+      "transparent",
+    color:
+      "rgba(255,255,255,0.48)",
     fontSize: "10px",
     fontWeight: 800,
     cursor: "pointer",
+    transition:
+      "color 0.2s ease",
   },
 
-  /* POST MODAL */
+  /* =========================
+     POST MODAL
+  ========================= */
 
   modalBackground: {
     position: "fixed",
@@ -2644,77 +2736,95 @@ const styles: Record<
     zIndex: 100,
     display: "flex",
     alignItems: "flex-end",
-    justifyContent: "center",
+    justifyContent:
+      "center",
     background:
-      "rgba(5,18,14,0.72)",
-    backdropFilter: "blur(5px)",
+      "rgba(3,10,7,0.74)",
+    backdropFilter:
+      "blur(5px)",
   },
 
   modal: {
     width: "100%",
-    maxWidth: "700px",
-    maxHeight: "93vh",
+    maxWidth: "680px",
+    maxHeight: "94vh",
     overflowY: "auto",
-    padding: "26px 20px 30px",
-    boxSizing: "border-box",
+    padding:
+      "25px 20px 32px",
     borderRadius:
-      "27px 27px 0 0",
-    background: colors.paper,
-    color: colors.ink,
-    boxShadow:
-      "0 -20px 70px rgba(0,0,0,0.28)",
+      "22px 22px 0 0",
+    background:
+      colors.warmWhite,
+    border:
+      `1px solid ${colors.line}`,
+    color:
+      colors.textDark,
   },
 
   modalHeader: {
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
+    alignItems:
+      "flex-start",
     gap: "15px",
-    marginBottom: "21px",
+    marginBottom:
+      "20px",
   },
 
   modalTitle: {
-    margin: "5px 0 0",
-    fontSize: "29px",
-    fontWeight: 950,
-    color: colors.forest,
+    margin:
+      "5px 0 0",
+    color:
+      colors.forest,
+    fontSize: "28px",
+    fontWeight: 900,
   },
 
-  modalSub: {
-    margin: "5px 0 0",
-    color: colors.muted,
-    fontSize: "13px",
+  modalSubtitle: {
+    margin:
+      "6px 0 0",
+    color:
+      colors.muted,
+    fontSize: "12px",
   },
 
   closeButton: {
     width: "40px",
     height: "40px",
     flexShrink: 0,
-    border: "none",
-    borderRadius: "50%",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    border:
+      `1px solid ${colors.line}`,
+    borderRadius: "10px",
     background:
-      "rgba(23,49,42,0.08)",
-    color: colors.ink,
+      "#ECE7DB",
+    color:
+      colors.forest,
     cursor: "pointer",
   },
 
   form: {
     display: "flex",
-    flexDirection: "column",
+    flexDirection:
+      "column",
     gap: "11px",
   },
 
   input: {
     boxSizing: "border-box",
     width: "100%",
-    padding: "14px",
-    borderRadius: "13px",
+    padding:
+      "14px 13px",
     border:
-      "1px solid rgba(23,49,42,0.14)",
-    background: "#FFFFFF",
-    color: colors.ink,
+      `1px solid ${colors.line}`,
+    borderRadius: "10px",
+    background:
+      "#FAF8F2",
+    color:
+      colors.textDark,
     fontSize: "15px",
     outline: "none",
   },
@@ -2726,36 +2836,29 @@ const styles: Record<
     gap: "10px",
   },
 
-  photoUpload: {
-    minHeight: "65px",
-    boxSizing: "border-box",
+  photoButton: {
+    minHeight: "64px",
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
-    gap: "11px",
-    borderRadius: "14px",
+    justifyContent:
+      "center",
+    gap: "10px",
     border:
-      "2px dashed rgba(18,53,42,0.25)",
+      `1px dashed ${colors.gold}`,
+    borderRadius: "11px",
     background:
-      "rgba(18,53,42,0.04)",
-    color: colors.forest,
+      "#FBF7EA",
+    color:
+      colors.forest,
     cursor: "pointer",
   },
 
-  previewSection: {
-    padding: "13px",
-    borderRadius: "15px",
-    background:
-      "rgba(18,53,42,0.05)",
-  },
-
-  previewHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    marginBottom: "9px",
-    color: colors.muted,
-    fontSize: "11px",
-    fontWeight: 900,
+  photoButtonHint: {
+    display: "block",
+    marginTop: "2px",
+    color:
+      colors.muted,
+    fontSize: "10px",
   },
 
   previewGrid: {
@@ -2769,14 +2872,16 @@ const styles: Record<
     position: "relative",
     aspectRatio: "1",
     overflow: "hidden",
-    borderRadius: "10px",
-    background: "#DDD",
+    borderRadius: "9px",
+    background:
+      "#D9D4C8",
   },
 
   previewImage: {
     width: "100%",
     height: "100%",
     objectFit: "cover",
+    display: "block",
   },
 
   previewRemove: {
@@ -2785,56 +2890,54 @@ const styles: Record<
     right: "5px",
     width: "25px",
     height: "25px",
-    border: "none",
-    borderRadius: "50%",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    border: "none",
+    borderRadius: "50%",
     background:
-      "rgba(0,0,0,0.72)",
-    color: colors.white,
+      "rgba(0,0,0,0.68)",
+    color: "#fff",
     cursor: "pointer",
   },
 
-  coverLabel: {
+  previewMain: {
     position: "absolute",
-    bottom: "5px",
     left: "5px",
-    padding: "3px 5px",
-    borderRadius: "5px",
-    background: colors.gold,
-    color: colors.forest,
-    fontSize: "7px",
-    fontWeight: 950,
+    bottom: "5px",
+    padding:
+      "3px 5px",
+    borderRadius: "4px",
+    background:
+      colors.gold,
+    color:
+      colors.darkForest,
+    fontSize: "8px",
+    fontWeight: 900,
   },
 
   submitButton: {
-    marginTop: "5px",
-    padding: "16px",
-    border: "none",
-    borderRadius: "14px",
+    minHeight: "52px",
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent:
+      "center",
     gap: "8px",
-    background: colors.forest,
-    color: colors.white,
+    padding:
+      "14px",
+    border: "none",
+    borderRadius: "11px",
+    background:
+      colors.forest,
+    color: "#fff",
     fontSize: "15px",
-    fontWeight: 950,
+    fontWeight: 900,
     cursor: "pointer",
   },
 
-  spinner: {
-    width: "15px",
-    height: "15px",
-    border:
-      "2px solid rgba(255,255,255,0.3)",
-    borderTop:
-      "2px solid white",
-    borderRadius: "50%",
-  },
-
-  /* PHOTO VIEWER */
+  /* =========================
+     PHOTO VIEWER
+  ========================= */
 
   viewerBackground: {
     position: "fixed",
@@ -2842,58 +2945,97 @@ const styles: Record<
     zIndex: 200,
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent:
+      "center",
+    padding: "14px",
     background:
-      "rgba(3,12,10,0.97)",
+      "rgba(3,8,5,0.94)",
+    backdropFilter:
+      "blur(8px)",
+  },
+
+  viewer: {
+    width: "100%",
+    maxWidth: "1050px",
+    maxHeight: "96vh",
+    display: "flex",
+    flexDirection:
+      "column",
+    overflow: "hidden",
+    border:
+      "1px solid rgba(255,255,255,0.12)",
+    borderRadius: "17px",
+    background:
+      "#08130E",
+    color: "#fff",
+    boxShadow:
+      "0 30px 90px rgba(0,0,0,0.55)",
   },
 
   viewerTop: {
-    position: "absolute",
-    top: "18px",
-    left: "18px",
-    right: "18px",
-    zIndex: 5,
+    flexShrink: 0,
     display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
+    justifyContent:
+      "space-between",
+    gap: "15px",
+    padding:
+      "15px 16px",
+    borderBottom:
+      "1px solid rgba(255,255,255,0.08)",
   },
 
-  viewerCounter: {
-    padding: "8px 12px",
-    borderRadius: "999px",
-    background:
-      "rgba(255,255,255,0.1)",
-    color: colors.white,
-    fontSize: "12px",
-    fontWeight: 800,
+  viewerEyebrow: {
+    color:
+      colors.gold,
+    fontSize: "9px",
+    fontWeight: 900,
+    letterSpacing: "2px",
+  },
+
+  viewerTitle: {
+    margin:
+      "3px 0 0",
+    fontSize: "21px",
+    fontWeight: 900,
   },
 
   viewerClose: {
-    width: "43px",
-    height: "43px",
-    border: "none",
-    borderRadius: "50%",
+    width: "39px",
+    height: "39px",
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent:
+      "center",
+    flexShrink: 0,
+    border:
+      "1px solid rgba(255,255,255,0.15)",
+    borderRadius: "10px",
     background:
-      "rgba(255,255,255,0.1)",
-    color: colors.white,
+      "rgba(255,255,255,0.08)",
+    color: "#fff",
     cursor: "pointer",
   },
 
-  viewerImageWrap: {
-    maxWidth: "90vw",
-    maxHeight: "78vh",
-    overflow: "auto",
+  viewerImageArea: {
+    position: "relative",
+    flex: "1 1 auto",
+    minHeight: "280px",
+    maxHeight: "65vh",
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent:
+      "center",
+    overflow: "hidden",
+    background:
+      "#020705",
   },
 
   viewerImage: {
-    maxWidth: "88vw",
-    maxHeight: "76vh",
+    maxWidth: "100%",
+    maxHeight: "65vh",
+    width: "auto",
+    height: "auto",
     objectFit: "contain",
     display: "block",
     transition:
@@ -2901,281 +3043,98 @@ const styles: Record<
     userSelect: "none",
   },
 
-  viewerArrowLeft: {
+  viewerArrow: {
     position: "absolute",
-    left: "15px",
     top: "50%",
-    transform: "translateY(-50%)",
     zIndex: 5,
-    width: "48px",
-    height: "48px",
-    border: "none",
-    borderRadius: "50%",
+    width: "45px",
+    height: "45px",
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
-    background:
-      "rgba(255,255,255,0.11)",
-    color: colors.white,
-    cursor: "pointer",
-  },
-
-  viewerArrowRight: {
-    position: "absolute",
-    right: "15px",
-    top: "50%",
-    transform: "translateY(-50%)",
-    zIndex: 5,
-    width: "48px",
-    height: "48px",
-    border: "none",
+    justifyContent:
+      "center",
+    border:
+      "1px solid rgba(255,255,255,0.18)",
     borderRadius: "50%",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
     background:
-      "rgba(255,255,255,0.11)",
-    color: colors.white,
+      "rgba(0,0,0,0.58)",
+    color: "#fff",
     cursor: "pointer",
+    transform:
+      "translateY(-50%)",
   },
 
   viewerControls: {
-    position: "absolute",
-    bottom: "82px",
-    left: "50%",
-    transform: "translateX(-50%)",
+    flexShrink: 0,
     display: "flex",
     alignItems: "center",
-    gap: "10px",
-    padding: "7px",
-    borderRadius: "999px",
-    background:
-      "rgba(255,255,255,0.1)",
+    justifyContent:
+      "center",
+    gap: "8px",
+    padding:
+      "10px",
+    borderTop:
+      "1px solid rgba(255,255,255,0.08)",
   },
 
   viewerControl: {
     width: "38px",
     height: "38px",
-    border: "none",
-    borderRadius: "50%",
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent:
+      "center",
+    border:
+      "1px solid rgba(255,255,255,0.12)",
+    borderRadius: "9px",
     background:
-      "rgba(255,255,255,0.12)",
-    color: colors.white,
+      "rgba(255,255,255,0.07)",
+    color: "#fff",
     cursor: "pointer",
   },
 
   zoomText: {
-    minWidth: "45px",
+    minWidth: "50px",
     textAlign: "center",
-    color: colors.white,
+    color:
+      "rgba(255,255,255,0.65)",
     fontSize: "12px",
     fontWeight: 800,
   },
 
-  viewerThumbnails: {
-    position: "absolute",
-    bottom: "15px",
-    left: "50%",
-    transform: "translateX(-50%)",
-    maxWidth: "90vw",
-    display: "flex",
-    gap: "6px",
-    overflowX: "auto",
-    padding: "4px",
-  },
-
-  viewerThumbnail: {
-    width: "52px",
-    height: "42px",
+  viewerCounter: {
     flexShrink: 0,
-    padding: 0,
-    border:
-      "2px solid transparent",
-    borderRadius: "7px",
-    overflow: "hidden",
-    background: "transparent",
-    cursor: "pointer",
-  },
-
-  viewerThumbnailActive: {
-    border:
-      "2px solid #E9B949",
-  },
-
-  viewerThumbnailImage: {
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-  },
-
-  /* DETAILS */
-
-  detailsBackground: {
-    position: "fixed",
-    inset: 0,
-    zIndex: 150,
-    display: "flex",
-    alignItems: "flex-end",
-    justifyContent: "center",
-    background:
-      "rgba(3,12,10,0.72)",
-    backdropFilter: "blur(5px)",
-  },
-
-  detailsModal: {
-    width: "100%",
-    maxWidth: "700px",
-    maxHeight: "92vh",
-    overflowY: "auto",
-    padding: "25px 20px 30px",
-    boxSizing: "border-box",
-    borderRadius:
-      "27px 27px 0 0",
-    background: colors.paper,
-  },
-
-  detailsHeader: {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    marginBottom: "18px",
-  },
-
-  detailsTitle: {
-    margin: "5px 0 0",
-    fontSize: "31px",
-    fontWeight: 950,
-    color: colors.forest,
-  },
-
-  detailsPhotoButton: {
-    position: "relative",
-    display: "block",
-    width: "100%",
-    padding: 0,
-    border: "none",
-    borderRadius: "17px",
-    overflow: "hidden",
-    background: "#0B1714",
-    cursor: "pointer",
-  },
-
-  detailsPhoto: {
-    width: "100%",
-    maxHeight: "500px",
-    objectFit: "contain",
-    display: "block",
-  },
-
-  detailsPhotoOverlay: {
-    position: "absolute",
-    bottom: "12px",
-    right: "12px",
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    padding: "8px 11px",
-    borderRadius: "999px",
-    background:
-      "rgba(7,29,23,0.75)",
-    color: colors.white,
-    fontSize: "11px",
+    textAlign: "center",
+    padding:
+      "0 0 8px",
+    color:
+      "rgba(255,255,255,0.5)",
+    fontSize: "10px",
     fontWeight: 800,
   },
 
-  detailsPerson: {
-    marginTop: "17px",
-    color: colors.muted,
-    fontSize: "13px",
-  },
-
-  detailsStats: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "11px",
-    marginTop: "18px",
+  viewerInfo: {
+    flexShrink: 0,
     padding:
-      "17px 0",
+      "14px 16px 17px",
     borderTop:
-      "1px solid rgba(23,49,42,0.1)",
-    borderBottom:
-      "1px solid rgba(23,49,42,0.1)",
+      "1px solid rgba(255,255,255,0.08)",
+    overflowY: "auto",
   },
 
-  detailsStat: {
-    display: "flex",
-    alignItems: "baseline",
-    gap: "9px",
+  viewerMetadata: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(3,1fr)",
+    gap: "10px",
   },
 
-  detailsCaption: {
-    marginTop: "17px",
-    color: "#52605A",
-    lineHeight: 1.65,
-    fontSize: "14px",
-  },
-
-  detailsDate: {
-    marginTop: "18px",
-    color: "#9AA29E",
-    fontSize: "11px",
+  viewerCaption: {
+    margin:
+      "12px 0 0",
+    color:
+      "rgba(255,255,255,0.68)",
+    fontSize: "13px",
+    lineHeight: 1.5,
   },
 };
-
-/*
-  Bubble animation.
-  This uses a small style tag so the
-  celebration works without another package.
-*/
-
-if (
-  typeof document !== "undefined" &&
-  !document.getElementById(
-    "ely-fishing-animations"
-  )
-) {
-  const style =
-    document.createElement("style");
-
-  style.id =
-    "ely-fishing-animations";
-
-  style.innerHTML = `
-    @keyframes bubbleFloat {
-      0% {
-        transform: translateY(0) scale(0.5);
-        opacity: 0;
-      }
-
-      15% {
-        opacity: 1;
-      }
-
-      100% {
-        transform: translateY(-420px) scale(1.15);
-        opacity: 0;
-      }
-    }
-
-    @keyframes elySpin {
-      from {
-        transform: rotate(0deg);
-      }
-
-      to {
-        transform: rotate(360deg);
-      }
-    }
-
-    @media (max-width: 600px) {
-      .ely-fishing-hide-mobile {
-        display: none;
-      }
-    }
-  `;
-
-  document.head.appendChild(style);
-}
