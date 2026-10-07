@@ -26,6 +26,16 @@ type Catch = {
   created_at: string;
 };
 
+const colors = {
+  navy: "#071827",
+  deepNavy: "#050B10",
+  lakeBlue: "#1E78B7",
+  sunsetOrange: "#FF7043",
+  sunYellow: "#FFC83D",
+  dockBrown: "#8B5A2B",
+  loonWhite: "#F5F7F7",
+};
+
 export default function Home() {
   const [catches, setCatches] = useState<Catch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -199,7 +209,7 @@ export default function Home() {
 
           <Fish
             size={30}
-            color="#f4b83f"
+            color=colors.sunYellow
           />
         </div>
 
@@ -213,7 +223,7 @@ export default function Home() {
           <div style={styles.emptyCard}>
             <Fish
               size={42}
-              color="#f4b83f"
+              color=colors.sunYellow
             />
 
             <h3>No catches yet</h3>
@@ -252,7 +262,7 @@ export default function Home() {
 
                   <Fish
                     size={23}
-                    color="#f4b83f"
+                    color=colors.sunYellow
                   />
                 </div>
 
@@ -312,7 +322,7 @@ export default function Home() {
           <div style={styles.tripHeader}>
             <Trophy
               size={25}
-              color="#f4b83f"
+              color=colors.sunYellow
             />
 
             <h2>Trip Stats</h2>
@@ -504,8 +514,8 @@ const styles: Record<
 > = {
   page: {
     minHeight: "100vh",
-    background: "#06151a",
-    color: "#fff",
+    background: colors.deepNavy,
+    color: colors.loonWhite,
     paddingBottom: "90px",
     fontFamily:
       "Arial, Helvetica, sans-serif",
@@ -547,7 +557,7 @@ const styles: Record<
   },
 
   eyebrow: {
-    color: "#f4b83f",
+    color: colors.sunYellow,
     fontSize: "11px",
     fontWeight: 900,
     letterSpacing: "3px",
@@ -578,7 +588,7 @@ const styles: Record<
       "rgba(0,0,0,0.35)",
     border:
       "1px solid rgba(255,255,255,0.2)",
-    color: "#f4b83f",
+    color: colors.sunYellow,
     backdropFilter: "blur(10px)",
   },
 
@@ -590,7 +600,7 @@ const styles: Record<
     padding: "17px",
     borderRadius: "20px",
     background:
-      "rgba(10,20,25,0.65)",
+      "rgba(7,24,39,0.72)",
     border:
       "1px solid rgba(255,255,255,0.18)",
     backdropFilter: "blur(15px)",
@@ -605,8 +615,8 @@ const styles: Record<
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    background: "#f4b83f",
-    color: "#101820",
+    background: colors.sunYellow,
+    color: colors.deepNavy,
   },
 
   locationTitle: {
@@ -631,13 +641,13 @@ const styles: Record<
     alignItems: "center",
     justifyContent: "center",
     gap: "10px",
-    background: "#f4b83f",
-    color: "#101820",
+    background: colors.sunsetOrange,
+    color: colors.loonWhite,
     fontSize: "17px",
     fontWeight: 900,
     cursor: "pointer",
     boxShadow:
-      "0 10px 30px rgba(244,184,63,0.25)",
+      "0 10px 30px rgba(255,112,67,0.28)",
   },
 
   feed: {
@@ -654,7 +664,7 @@ const styles: Record<
   },
 
   sectionEyebrow: {
-    color: "#f4b83f",
+    color: colors.sunYellow,
     fontSize: "10px",
     fontWeight: 900,
     letterSpacing: "3px",
@@ -688,7 +698,7 @@ const styles: Record<
     marginBottom: "18px",
     borderRadius: "22px",
     background:
-      "rgba(11,27,34,0.82)",
+      "rgba(7,24,39,0.88)",
     border:
       "1px solid rgba(255,255,255,0.12)",
     boxShadow:
@@ -713,7 +723,7 @@ const styles: Record<
   },
 
   catchPerson: {
-    color: "#f4b83f",
+    color: colors.sunYellow,
     fontSize: "13px",
     fontWeight: 800,
   },
@@ -781,7 +791,7 @@ const styles: Record<
     padding: "22px",
     borderRadius: "23px",
     background:
-      "linear-gradient(145deg, rgba(26,49,57,0.85), rgba(7,20,25,0.9))",
+      "linear-gradient(145deg, rgba(30,120,183,0.20), rgba(5,11,16,0.92))",
     border:
       "1px solid rgba(255,255,255,0.13)",
     backdropFilter: "blur(12px)",
@@ -813,7 +823,7 @@ const styles: Record<
     alignItems: "center",
     gap: "55px",
     background:
-      "rgba(3,13,18,0.94)",
+      "rgba(5,11,16,0.96)",
     borderTop:
       "1px solid rgba(255,255,255,0.12)",
     backdropFilter: "blur(18px)",
@@ -822,7 +832,7 @@ const styles: Record<
   navActive: {
     border: "none",
     background: "transparent",
-    color: "#f4b83f",
+    color: colors.sunYellow,
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
@@ -861,7 +871,7 @@ const styles: Record<
     padding: "24px 20px 30px",
     borderRadius:
       "25px 25px 0 0",
-    background: "#0a2028",
+    background: colors.navy,
     border:
       "1px solid rgba(255,255,255,0.13)",
   },
@@ -895,8 +905,8 @@ const styles: Record<
     borderRadius: "13px",
     border:
       "1px solid rgba(255,255,255,0.1)",
-    background: "#06151a",
-    color: "#fff",
+    background: colors.deepNavy,
+    color: colors.loonWhite,
     fontSize: "15px",
     outline: "none",
   },
@@ -915,8 +925,8 @@ const styles: Record<
     gap: "8px",
     borderRadius: "13px",
     border:
-      "1px dashed rgba(244,184,63,0.5)",
-    color: "#f4b83f",
+      "1px dashed rgba(255,112,67,0.55)",
+    color: colors.sunYellow,
     cursor: "pointer",
   },
 
@@ -924,8 +934,8 @@ const styles: Record<
     padding: "15px",
     border: "none",
     borderRadius: "13px",
-    background: "#f4b83f",
-    color: "#101820",
+    background: colors.sunsetOrange,
+    color: colors.loonWhite,
     fontSize: "15px",
     fontWeight: 900,
     cursor: "pointer",
