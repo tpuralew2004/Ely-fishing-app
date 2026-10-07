@@ -15,13 +15,14 @@ import {
 import { supabase } from "./lib/supabase";
 
 type Catch = {
-  id: string;
+  id: number;
   name: string;
-  species: string;
+  fish_species: string;
+  length: number;
   weight: number | null;
-  length: number | null;
-  notes: string | null;
-  photo_path: string | null;
+  lake: string;
+  caption: string | null;
+  image_url: string | null;
   created_at: string;
 };
 
@@ -29,14 +30,15 @@ export default function Home() {
   const [catches, setCatches] = useState<Catch[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPost, setShowPost] = useState(false);
+  const [posting, setPosting] = useState(false);
 
   const [name, setName] = useState("");
-  const [species, setSpecies] = useState("");
-  const [weight, setWeight] = useState("");
+  const [fishSpecies, setFishSpecies] = useState("");
   const [length, setLength] = useState("");
-  const [notes, setNotes] = useState("");
+  const [weight, setWeight] = useState("");
+  const [lake, setLake] = useState("White Iron Lake");
+  const [caption, setCaption] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
-  const [posting, setPosting] = useState(false);
 
   async function loadCatches() {
     setLoading(true);
@@ -47,22 +49,7 @@ export default function Home() {
       .order("created_at", { ascending: false });
 
     if (!error && data) {
-      const withPhotos = await Promise.all(
-        data.map(async (item) => {
-          if (!item.photo_path) return item;
-
-          const { data: signed } = await supabase.storage
-            .from("catch-photos")
-            .createSignedUrl(item.photo_path, 60 * 60 * 24);
-
-          return {
-            ...item,
-            photo_path: signed?.signedUrl || null,
-          };
-        })
-      );
-
-      setCatches(withPhotos);
+      setCatches(data);
     }
 
     setLoading(false);
@@ -73,42 +60,52 @@ export default function Home() {
   }, []);
 
   async function postCatch() {
-    if (!name || !species) {
-      alert("Please enter your name and the fish species.");
+    if (!name || !fishSpecies || !length || !lake) {
+      alert("Please enter your name, fish species, length, and lake.");
       return;
     }
 
     setPosting(true);
 
     try {
-      let photoPath = null;
+      let imageUrl: string | null = null;
 
       if (photo) {
-        const fileExt = photo.name.split(".").pop();
+        const extension = photo.name.split(".").pop() || "jpg";
         const fileName = `${Date.now()}-${Math.random()
           .toString(36)
-          .substring(2)}.${fileExt}`;
+          .substring(2)}.${extension}`;
 
-        const path = `private/${fileName}`;
+        const filePath = `private/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
           .from("catch-photos")
-          .upload(path, photo);
+          .upload(filePath, photo);
 
         if (uploadError) {
           throw uploadError;
         }
 
-        photoPath = path;
+        const { data: signedData, error: signedError } =
+          await supabase.storage
+            .from("catch-photos")
+            .createSignedUrl(filePath, 60 * 60 * 24 * 365);
+
+        if (signedError) {
+          throw signedError;
+        }
+
+        imageUrl = signedData.signedUrl;
       }
 
       const { error } = await supabase.from("catches").insert({
         name,
-        species,
+        fish_species: fishSpecies,
+        length: Number(length),
         weight: weight ? Number(weight) : null,
-        length: length ? Number(length) : null,
-        notes: notes || null,
-        photo_path: photoPath,
+        lake,
+        caption: caption || null,
+        image_url: imageUrl,
       });
 
       if (error) {
@@ -116,11 +113,13 @@ export default function Home() {
       }
 
       setName("");
-      setSpecies("");
-      setWeight("");
+      setFishSpecies("");
       setLength("");
-      setNotes("");
+      setWeight("");
+      setLake("White Iron Lake");
+      setCaption("");
       setPhoto(null);
+
       setShowPost(false);
 
       await loadCatches();
@@ -133,179 +132,158 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-[#071d18] text-white pb-24">
-      {/* HERO */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-[#123f34] via-[#0b2b24] to-[#071d18]" />
+    <main style={styles.page}>
+      {/* HEADER */}
+      <header style={styles.hero}>
+        <div style={styles.heroOverlay} />
 
-        <div className="absolute -top-24 -right-20 h-72 w-72 rounded-full bg-emerald-500/10 blur-3xl" />
-        <div className="absolute top-40 -left-24 h-72 w-72 rounded-full bg-blue-500/10 blur-3xl" />
-
-        <div className="relative px-5 pt-10 pb-8">
-          <div className="flex items-center justify-between">
+        <div style={styles.heroContent}>
+          <div style={styles.topRow}>
             <div>
-              <p className="text-sm font-medium tracking-widest text-emerald-300 uppercase">
-                White Iron Lake
-              </p>
+              <div style={styles.eyebrow}>FAMILY FISHING TRIP</div>
 
-              <h1 className="mt-1 text-4xl font-black tracking-tight">
-                Ely Fishing
-              </h1>
+              <h1 style={styles.title}>Ely Fishing</h1>
 
-              <p className="mt-2 text-sm text-emerald-100/70">
-                Family Fishing Trip • Minnesota
+              <p style={styles.subtitle}>
+                White Iron Lake • Minnesota
               </p>
             </div>
 
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/10 backdrop-blur">
-              <Fish size={25} />
+            <div style={styles.fishIcon}>
+              <Fish size={27} />
             </div>
           </div>
 
-          {/* Trip card */}
-          <div className="mt-7 rounded-3xl border border-white/10 bg-white/[0.08] p-5 shadow-2xl backdrop-blur">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-400 text-[#071d18]">
-                <MapPin size={22} />
-              </div>
-
-              <div>
-                <p className="font-bold">White Iron Lake</p>
-                <p className="text-sm text-white/60">
-                  Ely, Minnesota
-                </p>
-              </div>
+          {/* LAKE CARD */}
+          <div style={styles.lakeCard}>
+            <div style={styles.lakeIcon}>
+              <MapPin size={23} />
             </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <div className="rounded-2xl bg-black/20 p-4">
-                <p className="text-xs text-white/50">Family</p>
-                <p className="mt-1 text-xl font-bold">12</p>
-                <p className="text-xs text-white/50">People</p>
-              </div>
-
-              <div className="rounded-2xl bg-black/20 p-4">
-                <p className="text-xs text-white/50">Catches</p>
-                <p className="mt-1 text-xl font-bold">
-                  {catches.length}
-                </p>
-                <p className="text-xs text-white/50">So far</p>
-              </div>
+            <div>
+              <div style={styles.lakeName}>White Iron Lake</div>
+              <div style={styles.lakeLocation}>Ely, Minnesota</div>
             </div>
           </div>
 
-          {/* Post button */}
+          {/* POST BUTTON */}
           <button
             onClick={() => setShowPost(true)}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-400 py-4 font-bold text-[#071d18] shadow-lg shadow-emerald-900/30 transition hover:bg-emerald-300 active:scale-[0.98]"
+            style={styles.postButton}
           >
             <Plus size={21} />
             Post a Catch
           </button>
         </div>
-      </section>
+      </header>
 
-      {/* CATCH FEED */}
-      <section className="px-5 pt-3">
-        <div className="mb-4 flex items-end justify-between">
+      {/* MAIN FEED */}
+      <section style={styles.content}>
+        <div style={styles.sectionHeader}>
           <div>
-            <p className="text-xs font-bold tracking-widest text-emerald-400 uppercase">
-              The catch board
-            </p>
-            <h2 className="mt-1 text-2xl font-black">
-              Recent Catches
-            </h2>
+            <div style={styles.sectionEyebrow}>THE CATCH BOARD</div>
+            <h2 style={styles.sectionTitle}>Recent Catches</h2>
           </div>
 
-          <Fish className="text-white/20" size={28} />
+          <Fish size={27} color="#6f927f" />
         </div>
 
-        {loading ? (
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-white/50">
-            Loading catches...
+        {/* LOADING */}
+        {loading && (
+          <div style={styles.emptyCard}>
+            <Fish size={34} color="#7fc69b" />
+            <h3 style={styles.emptyTitle}>Loading catches...</h3>
           </div>
-        ) : catches.length === 0 ? (
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center">
-            <Fish className="mx-auto text-emerald-400" size={35} />
-            <p className="mt-3 font-bold">No catches yet</p>
-            <p className="mt-1 text-sm text-white/50">
-              Be the first one to post a fish!
+        )}
+
+        {/* NO CATCHES */}
+        {!loading && catches.length === 0 && (
+          <div style={styles.emptyCard}>
+            <Fish size={38} color="#7fc69b" />
+
+            <h3 style={styles.emptyTitle}>
+              No catches yet
+            </h3>
+
+            <p style={styles.emptyText}>
+              Be the first person to post a fish!
             </p>
           </div>
-        ) : (
-          <div className="space-y-4">
+        )}
+
+        {/* CATCHES */}
+        {!loading && catches.length > 0 && (
+          <div>
             {catches.map((item) => (
-              <article
-                key={item.id}
-                className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.06] shadow-xl"
-              >
-                {item.photo_path && (
+              <article key={item.id} style={styles.catchCard}>
+                {/* PHOTO */}
+                {item.image_url && (
                   <img
-                    src={item.photo_path}
-                    alt={item.species}
-                    className="h-64 w-full object-cover"
+                    src={item.image_url}
+                    alt={item.fish_species}
+                    style={styles.catchImage}
                   />
                 )}
 
-                <div className="p-5">
-                  <div className="flex items-start justify-between gap-4">
+                {/* CATCH INFO */}
+                <div style={styles.catchBody}>
+                  <div style={styles.catchTop}>
                     <div>
-                      <p className="text-sm font-medium text-emerald-300">
+                      <div style={styles.catchName}>
                         {item.name}
-                      </p>
+                      </div>
 
-                      <h3 className="mt-1 text-2xl font-black">
-                        {item.species}
+                      <h3 style={styles.fishName}>
+                        {item.fish_species}
                       </h3>
                     </div>
 
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-400/10">
-                      <Fish
-                        size={22}
-                        className="text-emerald-300"
-                      />
+                    <div style={styles.smallFishIcon}>
+                      <Fish size={20} />
                     </div>
                   </div>
 
-                  {(item.weight || item.length) && (
-                    <div className="mt-4 flex gap-2">
-                      {item.weight && (
-                        <div className="rounded-xl bg-black/20 px-3 py-2">
-                          <p className="text-xs text-white/40">
-                            Weight
-                          </p>
-                          <p className="font-bold">
-                            {item.weight} lbs
-                          </p>
-                        </div>
-                      )}
-
-                      {item.length && (
-                        <div className="rounded-xl bg-black/20 px-3 py-2">
-                          <p className="text-xs text-white/40">
-                            Length
-                          </p>
-                          <p className="font-bold">
-                            {item.length} in
-                          </p>
-                        </div>
-                      )}
+                  {/* STATS */}
+                  <div style={styles.statsRow}>
+                    <div style={styles.statBox}>
+                      <div style={styles.statLabel}>LENGTH</div>
+                      <div style={styles.statValue}>
+                        {item.length}""
+                      </div>
                     </div>
-                  )}
 
-                  {item.notes && (
-                    <p className="mt-4 text-sm leading-6 text-white/60">
-                      {item.notes}
+                    {item.weight !== null && (
+                      <div style={styles.statBox}>
+                        <div style={styles.statLabel}>WEIGHT</div>
+                        <div style={styles.statValue}>
+                          {item.weight} lbs
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={styles.statBox}>
+                      <div style={styles.statLabel}>LAKE</div>
+                      <div style={styles.statValueSmall}>
+                        {item.lake}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* CAPTION */}
+                  {item.caption && (
+                    <p style={styles.caption}>
+                      {item.caption}
                     </p>
                   )}
 
-                  <div className="mt-5 flex items-center gap-5 border-t border-white/10 pt-4 text-white/40">
-                    <button className="flex items-center gap-2 text-sm">
+                  {/* SOCIAL */}
+                  <div style={styles.socialRow}>
+                    <button style={styles.socialButton}>
                       <Heart size={18} />
                       Like
                     </button>
 
-                    <button className="flex items-center gap-2 text-sm">
+                    <button style={styles.socialButton}>
                       <MessageCircle size={18} />
                       Comment
                     </button>
@@ -315,141 +293,167 @@ export default function Home() {
             ))}
           </div>
         )}
-      </section>
 
-      {/* STATS */}
-      <section className="px-5 pt-8">
-        <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-[#123f34] to-[#0b2922] p-5">
-          <div className="flex items-center gap-3">
-            <Trophy className="text-yellow-300" size={25} />
-            <h2 className="text-xl font-black">Trip Stats</h2>
+        {/* TRIP STATS */}
+        <div style={styles.tripCard}>
+          <div style={styles.tripHeader}>
+            <Trophy size={23} color="#e8c96b" />
+
+            <h2 style={styles.tripTitle}>
+              Trip Stats
+            </h2>
           </div>
 
-          <div className="mt-5 grid grid-cols-3 gap-2">
-            <div className="rounded-2xl bg-black/20 p-4 text-center">
-              <p className="text-2xl font-black">{catches.length}</p>
-              <p className="mt-1 text-xs text-white/50">
-                Catches
-              </p>
+          <div style={styles.tripStats}>
+            <div style={styles.tripStat}>
+              <div style={styles.tripNumber}>
+                {catches.length}
+              </div>
+
+              <div style={styles.tripLabel}>
+                CATCHES
+              </div>
             </div>
 
-            <div className="rounded-2xl bg-black/20 p-4 text-center">
-              <p className="text-2xl font-black">
+            <div style={styles.tripStat}>
+              <div style={styles.tripNumber}>
                 {new Set(catches.map((c) => c.name)).size}
-              </p>
-              <p className="mt-1 text-xs text-white/50">
-                Fishermen
-              </p>
+              </div>
+
+              <div style={styles.tripLabel}>
+                FISHERMEN
+              </div>
             </div>
 
-            <div className="rounded-2xl bg-black/20 p-4 text-center">
-              <p className="text-2xl font-black">🏆</p>
-              <p className="mt-1 text-xs text-white/50">
-                Leaderboard
-              </p>
+            <div style={styles.tripStat}>
+              <div style={styles.trophy}>
+                🏆
+              </div>
+
+              <div style={styles.tripLabel}>
+                LEADERBOARD
+              </div>
             </div>
           </div>
         </div>
       </section>
 
       {/* BOTTOM NAV */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#071d18]/95 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-md justify-around px-3 py-3">
-          <button className="flex flex-col items-center gap-1 text-emerald-300">
-            <Fish size={21} />
-            <span className="text-[10px] font-bold">Feed</span>
-          </button>
+      <nav style={styles.bottomNav}>
+        <button style={styles.navButtonActive}>
+          <Fish size={21} />
+          <span>Feed</span>
+        </button>
 
-          <button className="flex flex-col items-center gap-1 text-white/40">
-            <MapPin size={21} />
-            <span className="text-[10px] font-bold">Fishing</span>
-          </button>
+        <button style={styles.navButton}>
+          <MapPin size={21} />
+          <span>Fishing</span>
+        </button>
 
-          <button className="flex flex-col items-center gap-1 text-white/40">
-            <Trophy size={21} />
-            <span className="text-[10px] font-bold">Leaders</span>
-          </button>
+        <button style={styles.navButton}>
+          <Trophy size={21} />
+          <span>Leaders</span>
+        </button>
 
-          <button className="flex flex-col items-center gap-1 text-white/40">
-            <Users size={21} />
-            <span className="text-[10px] font-bold">Family</span>
-          </button>
-        </div>
+        <button style={styles.navButton}>
+          <Users size={21} />
+          <span>Family</span>
+        </button>
       </nav>
 
       {/* POST MODAL */}
       {showPost && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-t-[2rem] border border-white/10 bg-[#0b2922] p-6 shadow-2xl">
-            <div className="mb-6 flex items-center justify-between">
+        <div style={styles.modalBackground}>
+          <div style={styles.modal}>
+            <div style={styles.modalHeader}>
               <div>
-                <p className="text-xs font-bold tracking-widest text-emerald-400 uppercase">
-                  New catch
-                </p>
-                <h2 className="mt-1 text-2xl font-black">
+                <div style={styles.sectionEyebrow}>
+                  NEW CATCH
+                </div>
+
+                <h2 style={styles.modalTitle}>
                   Post Your Fish
                 </h2>
               </div>
 
               <button
                 onClick={() => setShowPost(false)}
-                className="rounded-full bg-white/10 p-2"
+                style={styles.closeButton}
               >
-                <X size={20} />
+                <X size={21} />
               </button>
             </div>
 
-            <div className="space-y-3">
+            <div style={styles.form}>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Your name"
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/30"
+                style={styles.input}
               />
 
               <input
-                value={species}
-                onChange={(e) => setSpecies(e.target.value)}
+                value={fishSpecies}
+                onChange={(e) =>
+                  setFishSpecies(e.target.value)
+                }
                 placeholder="Fish species"
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/30"
+                style={styles.input}
               />
 
-              <div className="grid grid-cols-2 gap-3">
-                <input
-                  value={weight}
-                  onChange={(e) => setWeight(e.target.value)}
-                  placeholder="Weight (lbs)"
-                  type="number"
-                  className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/30"
-                />
-
+              <div style={styles.twoInputs}>
                 <input
                   value={length}
                   onChange={(e) => setLength(e.target.value)}
                   placeholder="Length (in)"
                   type="number"
-                  className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/30"
+                  style={styles.input}
+                />
+
+                <input
+                  value={weight}
+                  onChange={(e) => setWeight(e.target.value)}
+                  placeholder="Weight (lbs)"
+                  type="number"
+                  style={styles.input}
                 />
               </div>
 
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Tell the family about the catch..."
-                rows={3}
-                className="w-full resize-none rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/30"
+              <input
+                value={lake}
+                onChange={(e) => setLake(e.target.value)}
+                placeholder="Lake"
+                style={styles.input}
               />
 
-              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-emerald-400/30 bg-emerald-400/5 px-4 py-4 text-sm text-emerald-300">
+              <textarea
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+                placeholder="Tell the family about the catch..."
+                rows={3}
+                style={{
+                  ...styles.input,
+                  resize: "none",
+                }}
+              />
+
+              <label style={styles.photoButton}>
                 <Camera size={20} />
-                {photo ? photo.name : "Add a photo"}
+
+                <span>
+                  {photo
+                    ? photo.name
+                    : "Add a photo"}
+                </span>
 
                 <input
                   type="file"
                   accept="image/*"
-                  className="hidden"
+                  style={{ display: "none" }}
                   onChange={(e) =>
-                    setPhoto(e.target.files?.[0] || null)
+                    setPhoto(
+                      e.target.files?.[0] || null
+                    )
                   }
                 />
               </label>
@@ -457,9 +461,14 @@ export default function Home() {
               <button
                 onClick={postCatch}
                 disabled={posting}
-                className="w-full rounded-xl bg-emerald-400 py-4 font-black text-[#071d18] disabled:opacity-50"
+                style={{
+                  ...styles.submitButton,
+                  opacity: posting ? 0.6 : 1,
+                }}
               >
-                {posting ? "Posting..." : "Post Catch"}
+                {posting
+                  ? "Posting..."
+                  : "Post Catch"}
               </button>
             </div>
           </div>
@@ -468,3 +477,512 @@ export default function Home() {
     </main>
   );
 }
+
+/* =========================
+   STYLES
+========================= */
+
+const styles: Record<string, React.CSSProperties> = {
+  page: {
+    minHeight: "100vh",
+    background: "#071914",
+    color: "#ffffff",
+    paddingBottom: "85px",
+    fontFamily:
+      "Arial, Helvetica, sans-serif",
+  },
+
+  hero: {
+    position: "relative",
+    overflow: "hidden",
+    background:
+      "linear-gradient(145deg, #164637 0%, #0d3025 45%, #071914 100%)",
+    borderBottom:
+      "1px solid rgba(255,255,255,0.08)",
+  },
+
+  heroOverlay: {
+    position: "absolute",
+    width: "400px",
+    height: "400px",
+    borderRadius: "50%",
+    background:
+      "rgba(54, 150, 112, 0.12)",
+    filter: "blur(70px)",
+    top: "-200px",
+    right: "-120px",
+  },
+
+  heroContent: {
+    position: "relative",
+    maxWidth: "700px",
+    margin: "0 auto",
+    padding: "42px 20px 30px",
+  },
+
+  topRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+
+  eyebrow: {
+    color: "#7fd19e",
+    fontSize: "11px",
+    fontWeight: 800,
+    letterSpacing: "2px",
+    marginBottom: "7px",
+  },
+
+  title: {
+    margin: 0,
+    fontSize: "42px",
+    lineHeight: 1,
+    fontWeight: 900,
+    letterSpacing: "-1.5px",
+  },
+
+  subtitle: {
+    marginTop: "10px",
+    marginBottom: 0,
+    color: "rgba(255,255,255,0.6)",
+    fontSize: "14px",
+  },
+
+  fishIcon: {
+    width: "52px",
+    height: "52px",
+    borderRadius: "16px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background:
+      "rgba(255,255,255,0.08)",
+    border:
+      "1px solid rgba(255,255,255,0.1)",
+    color: "#91d6aa",
+  },
+
+  lakeCard: {
+    marginTop: "28px",
+    padding: "16px",
+    borderRadius: "18px",
+    display: "flex",
+    alignItems: "center",
+    gap: "13px",
+    background:
+      "rgba(255,255,255,0.07)",
+    border:
+      "1px solid rgba(255,255,255,0.1)",
+  },
+
+  lakeIcon: {
+    width: "44px",
+    height: "44px",
+    borderRadius: "13px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#74c995",
+    color: "#082016",
+  },
+
+  lakeName: {
+    fontWeight: 800,
+    fontSize: "16px",
+  },
+
+  lakeLocation: {
+    marginTop: "3px",
+    color: "rgba(255,255,255,0.5)",
+    fontSize: "13px",
+  },
+
+  postButton: {
+    width: "100%",
+    marginTop: "14px",
+    border: "none",
+    borderRadius: "16px",
+    padding: "16px",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: "8px",
+    background: "#79d39a",
+    color: "#071914",
+    fontSize: "16px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+
+  content: {
+    maxWidth: "700px",
+    margin: "0 auto",
+    padding: "25px 20px",
+  },
+
+  sectionHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    marginBottom: "16px",
+  },
+
+  sectionEyebrow: {
+    color: "#78ce98",
+    fontSize: "10px",
+    fontWeight: 900,
+    letterSpacing: "2px",
+  },
+
+  sectionTitle: {
+    margin: "5px 0 0",
+    fontSize: "27px",
+    fontWeight: 900,
+    letterSpacing: "-0.5px",
+  },
+
+  emptyCard: {
+    padding: "45px 20px",
+    borderRadius: "22px",
+    textAlign: "center",
+    background: "#0d2920",
+    border:
+      "1px solid rgba(255,255,255,0.08)",
+  },
+
+  emptyTitle: {
+    margin: "12px 0 5px",
+    fontSize: "18px",
+  },
+
+  emptyText: {
+    margin: 0,
+    color: "rgba(255,255,255,0.5)",
+    fontSize: "14px",
+  },
+
+  catchCard: {
+    overflow: "hidden",
+    marginBottom: "18px",
+    borderRadius: "22px",
+    background: "#0d2920",
+    border:
+      "1px solid rgba(255,255,255,0.08)",
+    boxShadow:
+      "0 12px 30px rgba(0,0,0,0.2)",
+  },
+
+  catchImage: {
+    width: "100%",
+    height: "280px",
+    objectFit: "cover",
+    display: "block",
+  },
+
+  catchBody: {
+    padding: "19px",
+  },
+
+  catchTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+
+  catchName: {
+    color: "#7fd19e",
+    fontSize: "13px",
+    fontWeight: 700,
+  },
+
+  fishName: {
+    margin: "4px 0 0",
+    fontSize: "27px",
+    fontWeight: 900,
+  },
+
+  smallFishIcon: {
+    width: "42px",
+    height: "42px",
+    borderRadius: "12px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background:
+      "rgba(121,211,154,0.1)",
+    color: "#79d39a",
+  },
+
+  statsRow: {
+    display: "flex",
+    gap: "8px",
+    marginTop: "16px",
+    overflow: "hidden",
+  },
+
+  statBox: {
+    flex: 1,
+    minWidth: 0,
+    padding: "11px",
+    borderRadius: "12px",
+    background: "rgba(0,0,0,0.18)",
+  },
+
+  statLabel: {
+    fontSize: "9px",
+    fontWeight: 800,
+    color: "rgba(255,255,255,0.38)",
+    letterSpacing: "1px",
+  },
+
+  statValue: {
+    marginTop: "4px",
+    fontWeight: 800,
+    fontSize: "15px",
+  },
+
+  statValueSmall: {
+    marginTop: "4px",
+    fontWeight: 700,
+    fontSize: "12px",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+
+  caption: {
+    margin: "16px 0 0",
+    color: "rgba(255,255,255,0.62)",
+    fontSize: "14px",
+    lineHeight: 1.6,
+  },
+
+  socialRow: {
+    display: "flex",
+    gap: "20px",
+    marginTop: "17px",
+    paddingTop: "14px",
+    borderTop:
+      "1px solid rgba(255,255,255,0.08)",
+  },
+
+  socialButton: {
+    display: "flex",
+    alignItems: "center",
+    gap: "7px",
+    border: "none",
+    background: "none",
+    color: "rgba(255,255,255,0.45)",
+    fontSize: "13px",
+    cursor: "pointer",
+    padding: 0,
+  },
+
+  tripCard: {
+    marginTop: "28px",
+    padding: "20px",
+    borderRadius: "22px",
+    background:
+      "linear-gradient(145deg, #123d2e, #0c261e)",
+    border:
+      "1px solid rgba(255,255,255,0.08)",
+  },
+
+  tripHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "9px",
+  },
+
+  tripTitle: {
+    margin: 0,
+    fontSize: "20px",
+    fontWeight: 900,
+  },
+
+  tripStats: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(3, 1fr)",
+    gap: "8px",
+    marginTop: "18px",
+  },
+
+  tripStat: {
+    padding: "14px 8px",
+    borderRadius: "14px",
+    textAlign: "center",
+    background:
+      "rgba(0,0,0,0.18)",
+  },
+
+  tripNumber: {
+    fontSize: "24px",
+    fontWeight: 900,
+  },
+
+  trophy: {
+    fontSize: "24px",
+    height: "29px",
+  },
+
+  tripLabel: {
+    marginTop: "4px",
+    fontSize: "9px",
+    color: "rgba(255,255,255,0.4)",
+    fontWeight: 800,
+    letterSpacing: "0.8px",
+  },
+
+  bottomNav: {
+    position: "fixed",
+    zIndex: 50,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: "72px",
+    display: "flex",
+    justifyContent: "center",
+    gap: "35px",
+    alignItems: "center",
+    background:
+      "rgba(5,20,15,0.97)",
+    borderTop:
+      "1px solid rgba(255,255,255,0.1)",
+    backdropFilter: "blur(12px)",
+  },
+
+  navButton: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "4px",
+    border: "none",
+    background: "none",
+    color: "rgba(255,255,255,0.35)",
+    fontSize: "10px",
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+
+  navButtonActive: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "4px",
+    border: "none",
+    background: "none",
+    color: "#79d39a",
+    fontSize: "10px",
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+
+  modalBackground: {
+    position: "fixed",
+    zIndex: 100,
+    inset: 0,
+    display: "flex",
+    alignItems: "flex-end",
+    justifyContent: "center",
+    background:
+      "rgba(0,0,0,0.72)",
+    padding: 0,
+  },
+
+  modal: {
+    width: "100%",
+    maxWidth: "700px",
+    maxHeight: "92vh",
+    overflowY: "auto",
+    padding: "24px 20px 30px",
+    borderRadius:
+      "25px 25px 0 0",
+    background: "#0c271f",
+    border:
+      "1px solid rgba(255,255,255,0.1)",
+  },
+
+  modalHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: "20px",
+  },
+
+  modalTitle: {
+    margin: "5px 0 0",
+    fontSize: "25px",
+    fontWeight: 900,
+  },
+
+  closeButton: {
+    width: "40px",
+    height: "40px",
+    borderRadius: "50%",
+    border: "none",
+    background:
+      "rgba(255,255,255,0.08)",
+    color: "#fff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+  },
+
+  form: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "11px",
+  },
+
+  input: {
+    width: "100%",
+    boxSizing: "border-box",
+    borderRadius: "13px",
+    border:
+      "1px solid rgba(255,255,255,0.1)",
+    background: "#071914",
+    color: "#fff",
+    padding: "14px",
+    fontSize: "15px",
+    outline: "none",
+  },
+
+  twoInputs: {
+    display: "grid",
+    gridTemplateColumns:
+      "1fr 1fr",
+    gap: "10px",
+  },
+
+  photoButton: {
+    minHeight: "54px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "9px",
+    borderRadius: "13px",
+    border:
+      "1px dashed rgba(121,211,154,0.4)",
+    background:
+      "rgba(121,211,154,0.05)",
+    color: "#79d39a",
+    padding: "10px",
+    fontSize: "13px",
+    cursor: "pointer",
+    overflow: "hidden",
+  },
+
+  submitButton: {
+    border: "none",
+    borderRadius: "13px",
+    padding: "15px",
+    background: "#79d39a",
+    color: "#071914",
+    fontSize: "15px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+};
