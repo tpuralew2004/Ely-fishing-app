@@ -15,25 +15,15 @@ import {
 import { supabase } from "./lib/supabase";
 
 type Catch = {
-  id: string;
+  id: number;
   name: string;
-  fish: string;
-  length: string;
-  weight: string;
+  fish_species: string;
+  length: number;
+  weight: number | null;
   lake: string;
-  caption: string;
+  caption: string | null;
   image_url: string | null;
   created_at: string;
-};
-
-const colors = {
-  navy: "#071827",
-  deepNavy: "#050B10",
-  lakeBlue: "#1E78B7",
-  sunsetOrange: "#FF7043",
-  sunYellow: "#FFC83D",
-  dockBrown: "#8B5A2B",
-  loonWhite: "#F5F7F7",
 };
 
 export default function Home() {
@@ -43,112 +33,127 @@ export default function Home() {
   const [posting, setPosting] = useState(false);
 
   const [name, setName] = useState("");
-  const [fish, setFish] = useState("");
+  const [fishSpecies, setFishSpecies] = useState("");
   const [length, setLength] = useState("");
   const [weight, setWeight] = useState("");
   const [lake, setLake] = useState("White Iron Lake");
   const [caption, setCaption] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
 
+  async function loadCatches() {
+    setLoading(true);
+
+    const { data, error } = await supabase
+      .from("catches")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (!error && data) {
+      const updatedCatches = await Promise.all(
+        data.map(async (item) => {
+          if (!item.image_url) return item;
+
+          try {
+            const url = new URL(item.image_url);
+            const marker = "/private/";
+            const markerIndex = url.pathname.indexOf(marker);
+
+            if (markerIndex === -1) return item;
+
+            const filePath = url.pathname.substring(
+              markerIndex + 1
+            );
+
+            const { data: signedData } =
+              await supabase.storage
+                .from("catch-photos")
+                .createSignedUrl(filePath, 60 * 60 * 24);
+
+            return {
+              ...item,
+              image_url:
+                signedData?.signedUrl || item.image_url,
+            };
+          } catch {
+            return item;
+          }
+        })
+      );
+
+      setCatches(updatedCatches);
+    }
+
+    setLoading(false);
+  }
+
   useEffect(() => {
     loadCatches();
   }, []);
 
-  async function loadCatches() {
-    try {
-      const { data, error } = await supabase
-        .from("catches")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("Error loading catches:", error);
-        return;
-      }
-
-      setCatches(data || []);
-    } catch (error) {
-      console.error("Error:", error);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handlePost() {
-    if (!name || !fish || !lake) {
-      alert("Please fill in your name, fish, and lake.");
+  async function postCatch() {
+    if (!name || !fishSpecies || !length || !lake) {
+      alert("Please enter your name, fish species, length, and lake.");
       return;
     }
 
     setPosting(true);
 
     try {
-      let photoUrl: string | null = null;
+      let imageUrl: string | null = null;
 
       if (photo) {
-        const fileExt = photo.name.split(".").pop();
+        const extension = photo.name.split(".").pop() || "jpg";
+
         const fileName = `${Date.now()}-${Math.random()
           .toString(36)
-          .substring(2)}.${fileExt}`;
+          .substring(2)}.${extension}`;
+
+        const filePath = `private/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
           .from("catch-photos")
-          .upload(`private/${fileName}`, photo);
+          .upload(filePath, photo);
 
-        if (uploadError) {
-          console.error("Photo upload error:", uploadError);
-          alert("Photo upload failed.");
-          setPosting(false);
-          return;
-        }
+        if (uploadError) throw uploadError;
 
-        const { data: signedUrlData, error: signedUrlError } =
+        const { data: signedData, error: signedError } =
           await supabase.storage
             .from("catch-photos")
-            .createSignedUrl(`private/${fileName}`, 60 * 60 * 24 * 365);
+            .createSignedUrl(filePath, 60 * 60 * 24 * 365);
 
-        if (signedUrlError) {
-          console.error("Signed URL error:", signedUrlError);
-        } else {
-          photoUrl = signedUrlData?.signedUrl || null;
-        }
+        if (signedError) throw signedError;
+
+        imageUrl = signedData.signedUrl;
       }
 
       const { error } = await supabase.from("catches").insert({
         name,
-        fish_species: fish,
-        length,
-        weight,
+        fish_species: fishSpecies,
+        length: Number(length),
+        weight: weight ? Number(weight) : null,
         lake,
-        caption,
-        image_url: photoUrl,
+        caption: caption || null,
+        image_url: imageUrl,
       });
 
-      if (error) {
-        console.error("Post error:", error);
-        alert(`Post error: ${error.message}`);
-        return;
-      }
+      if (error) throw error;
 
       setName("");
-      setFish("");
+      setFishSpecies("");
       setLength("");
       setWeight("");
       setLake("White Iron Lake");
       setCaption("");
       setPhoto(null);
+
       setShowPost(false);
 
       await loadCatches();
     } catch (error) {
-  console.error("Error:", error);
-  alert(
-    error instanceof Error
-      ? error.message
-      : "Something went wrong posting the catch."
-  );
-}
-    
+      console.error(error);
+      alert("Something went wrong posting the catch.");
+    }
+
     setPosting(false);
   }
 
@@ -161,302 +166,365 @@ export default function Home() {
         <div style={styles.heroDark} />
 
         <div style={styles.heroContent}>
-          <div style={styles.logoCircle}>
-  <img
-    src="/loon-logo.png.png"
-    alt="Ely Fishing loon logo"
-    style={{
-      width: "110px",
-      height: "110px",
-      objectFit: "cover",
-      borderRadius: "18px",
-    }}
-  />
-</div>
-          <p style={styles.eyebrow}>FAMILY FISHING TRIP</p>
+          <div style={styles.topRow}>
+            <div>
+              <div style={styles.eyebrow}>
+                FAMILY FISHING TRIP
+              </div>
 
-          <h1 style={styles.heroTitle}>Ely Fishing</h1>
+              <h1 style={styles.title}>Ely Fishing</h1>
 
-          <p style={styles.heroSubtitle}>
-            White Iron Lake • Minnesota
-          </p>
+              <p style={styles.subtitle}>
+                White Iron Lake • Minnesota
+              </p>
+            </div>
+
+            <div style={styles.logoCircle}>
+              <img
+                src="/loon-logo.png.png"
+                alt="Ely Fishing loon logo"
+                style={{
+                  width: "110px",
+                  height: "110px",
+                  objectFit: "cover",
+                  borderRadius: "18px",
+                }}
+              />
+            </div>
+          </div>
+
+          {/* LOCATION */}
+
+          <div style={styles.locationCard}>
+            <div style={styles.locationIcon}>
+              <MapPin size={24} />
+            </div>
+
+            <div>
+              <div style={styles.locationTitle}>
+                White Iron Lake
+              </div>
+
+              <div style={styles.locationSub}>
+                Ely, Minnesota
+              </div>
+            </div>
+          </div>
+
+          {/* POST BUTTON */}
 
           <button
-            style={styles.heroButton}
             onClick={() => setShowPost(true)}
+            style={styles.postButton}
           >
-            <Plus size={20} />
+            <Plus size={23} />
             Post a Catch
           </button>
         </div>
       </section>
 
-      {/* ================= STATS ================= */}
-
-      <section style={styles.statsSection}>
-        <div style={styles.statCard}>
-          <Fish size={24} color={colors.sunsetOrange} />
-          <strong>{catches.length}</strong>
-          <span>Catches</span>
-        </div>
-
-        <div style={styles.statCard}>
-          <Users size={24} color={colors.sunsetOrange} />
-          <strong>12</strong>
-          <span>Family</span>
-        </div>
-
-        <div style={styles.statCard}>
-          <MapPin size={24} color={colors.sunsetOrange} />
-          <strong>1</strong>
-          <span>Lake</span>
-        </div>
-      </section>
-
       {/* ================= FEED ================= */}
 
-      <section style={styles.feedSection}>
+      <section style={styles.feed}>
         <div style={styles.sectionHeader}>
           <div>
-            <p style={styles.sectionEyebrow}>THE TRIP</p>
-            <h2 style={styles.sectionTitle}>Recent Catches</h2>
+            <div style={styles.sectionEyebrow}>
+              THE CATCH BOARD
+            </div>
+
+            <h2 style={styles.sectionTitle}>
+              Recent Catches
+            </h2>
           </div>
 
-          <Trophy size={28} color={colors.sunsetOrange} />
+          <Fish
+            size={30}
+            color="#f4b83f"
+          />
         </div>
 
-        {loading ? (
-          <div style={styles.emptyState}>
+        {loading && (
+          <div style={styles.loadingCard}>
             Loading catches...
           </div>
-        ) : catches.length === 0 ? (
-          <div style={styles.emptyState}>
-            <Fish size={42} color={colors.lakeBlue} />
+        )}
+
+        {!loading && catches.length === 0 && (
+          <div style={styles.emptyCard}>
+            <Fish
+              size={42}
+              color="#f4b83f"
+            />
+
             <h3>No catches yet</h3>
-            <p>Be the first person to post a catch from the trip.</p>
 
-            <button
-              style={styles.primaryButton}
-              onClick={() => setShowPost(true)}
-            >
-              <Plus size={18} />
-              Post the First Catch
-            </button>
-          </div>
-        ) : (
-          <div style={styles.catchGrid}>
-            {catches.map((item) => (
-              <article key={item.id} style={styles.catchCard}>
-                {item.photo_url ? (
-                  <img
-                    src={item.photo_url}
-                    alt={`${item.fish} caught by ${item.name}`}
-                    style={styles.catchImage}
-                  />
-                ) : (
-                  <div style={styles.noPhoto}>
-                    <Fish size={42} color={colors.lakeBlue} />
-                  </div>
-                )}
-
-                <div style={styles.catchBody}>
-                  <div style={styles.catchTop}>
-                    <div>
-                      <h3 style={styles.catchName}>{item.name}</h3>
-                      <p style={styles.catchFish}>{item.fish}</p>
-                    </div>
-
-                    <Heart
-                      size={21}
-                      color={colors.sunsetOrange}
-                    />
-                  </div>
-
-                  <div style={styles.catchDetails}>
-                    {item.length && (
-                      <span>{item.length} in</span>
-                    )}
-
-                    {item.weight && (
-                      <span>{item.weight} lbs</span>
-                    )}
-
-                    <span>{item.lake}</span>
-                  </div>
-
-                  {item.caption && (
-                    <p style={styles.caption}>{item.caption}</p>
-                  )}
-
-                  <div style={styles.commentRow}>
-                    <MessageCircle size={16} />
-                    <span>Family catch</span>
-                  </div>
-                </div>
-              </article>
-            ))}
+            <p>
+              Be the first person to post a fish!
+            </p>
           </div>
         )}
-      </section>
 
-      {/* ================= TRIP INFO ================= */}
+        {!loading &&
+          catches.map((item) => (
+            <article
+              key={item.id}
+              style={styles.catchCard}
+            >
+              {item.image_url && (
+                <img
+                  src={item.image_url}
+                  alt={item.fish_species}
+                  style={styles.catchImage}
+                />
+              )}
 
-      <section style={styles.tripSection}>
+              <div style={styles.catchContent}>
+                <div style={styles.catchHeader}>
+                  <div>
+                    <div style={styles.catchPerson}>
+                      {item.name}
+                    </div>
+
+                    <h3 style={styles.fishName}>
+                      {item.fish_species}
+                    </h3>
+                  </div>
+
+                  <Fish
+                    size={23}
+                    color="#f4b83f"
+                  />
+                </div>
+
+                <div style={styles.catchStats}>
+                  <div>
+                    <span>LENGTH</span>
+                    <strong>
+                      {item.length}"
+                    </strong>
+                  </div>
+
+                  {item.weight !== null && (
+                    <div>
+                      <span>WEIGHT</span>
+                      <strong>
+                        {item.weight} lbs
+                      </strong>
+                    </div>
+                  )}
+
+                  <div>
+                    <span>LAKE</span>
+                    <strong style={styles.lakeStat}>
+                      {item.lake}
+                    </strong>
+                  </div>
+                </div>
+
+                {item.caption && (
+                  <p style={styles.caption}>
+                    {item.caption}
+                  </p>
+                )}
+
+                <div style={styles.social}>
+                  <button style={styles.socialButton}>
+                    <Heart size={18} />
+                    Like
+                  </button>
+
+                  <button style={styles.socialButton}>
+                    <MessageCircle size={18} />
+                    Comment
+                  </button>
+
+                  <span style={styles.time}>
+                    Just now
+                  </span>
+                </div>
+              </div>
+            </article>
+          ))}
+
+        {/* ================= TRIP STATS ================= */}
+
         <div style={styles.tripCard}>
-          <div style={styles.tripIcon}>
-            <MapPin size={25} color={colors.loonWhite} />
+          <div style={styles.tripHeader}>
+            <Trophy
+              size={25}
+              color="#f4b83f"
+            />
+
+            <h2>Trip Stats</h2>
           </div>
 
-          <div>
-            <p style={styles.tripLabel}>CURRENT LOCATION</p>
-            <h3 style={styles.tripTitle}>White Iron Lake</h3>
-            <p style={styles.tripText}>
-              Ely, Minnesota
-            </p>
+          <div style={styles.tripStats}>
+            <div>
+              <strong>
+                {catches.length}
+              </strong>
+
+              <span>CATCHES</span>
+            </div>
+
+            <div>
+              <strong>
+                {new Set(
+                  catches.map((c) => c.name)
+                ).size}
+              </strong>
+
+              <span>FISHERMEN</span>
+            </div>
+
+            <div>
+              <strong>🏆</strong>
+
+              <span>LEADERBOARD</span>
+            </div>
           </div>
         </div>
-
-        <div style={styles.tripCard}>
-          <div style={styles.tripIcon}>
-            <Users size={25} color={colors.loonWhite} />
-          </div>
-
-          <div>
-            <p style={styles.tripLabel}>THE CREW</p>
-            <h3 style={styles.tripTitle}>Puralewski Family</h3>
-            <p style={styles.tripText}>
-              Making memories on the water
-            </p>
-          </div>
-        </div>
       </section>
 
-      {/* ================= BOTTOM NAV ================= */}
+      {/* ================= NAV ================= */}
 
-      <nav style={styles.bottomNav}>
-        <button style={styles.navItem}>
+      <nav style={styles.nav}>
+        <button style={styles.navActive}>
           <Fish size={22} />
-          <span>Feed</span>
+          Feed
         </button>
 
-        <button
-          style={styles.navPost}
-          onClick={() => setShowPost(true)}
-        >
-          <Plus size={25} />
+        <button style={styles.navItem}>
+          <MapPin size={22} />
+          Fishing
         </button>
 
         <button style={styles.navItem}>
           <Trophy size={22} />
-          <span>Stats</span>
+          Leaders
+        </button>
+
+        <button style={styles.navItem}>
+          <Users size={22} />
+          Family
         </button>
       </nav>
 
       {/* ================= POST MODAL ================= */}
 
       {showPost && (
-        <div style={styles.modalOverlay}>
+        <div style={styles.modalBackground}>
           <div style={styles.modal}>
             <div style={styles.modalHeader}>
               <div>
-                <p style={styles.modalEyebrow}>ADD TO THE TRIP</p>
-                <h2 style={styles.modalTitle}>Post a Catch</h2>
+                <div style={styles.sectionEyebrow}>
+                  NEW CATCH
+                </div>
+
+                <h2>
+                  Post Your Fish
+                </h2>
               </div>
 
               <button
-                style={styles.closeButton}
                 onClick={() => setShowPost(false)}
+                style={styles.closeButton}
               >
-                <X size={23} />
+                <X size={21} />
               </button>
             </div>
 
             <div style={styles.form}>
-              <label style={styles.label}>
-                Your Name
+              <input
+                value={name}
+                onChange={(e) =>
+                  setName(e.target.value)
+                }
+                placeholder="Your name"
+                style={styles.input}
+              />
+
+              <input
+                value={fishSpecies}
+                onChange={(e) =>
+                  setFishSpecies(e.target.value)
+                }
+                placeholder="Fish species"
+                style={styles.input}
+              />
+
+              <div style={styles.twoInputs}>
                 <input
+                  value={length}
+                  onChange={(e) =>
+                    setLength(e.target.value)
+                  }
+                  placeholder="Length (in)"
+                  type="number"
                   style={styles.input}
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Enter your name"
                 />
-              </label>
 
-              <label style={styles.label}>
-                Fish
                 <input
+                  value={weight}
+                  onChange={(e) =>
+                    setWeight(e.target.value)
+                  }
+                  placeholder="Weight (lbs)"
+                  type="number"
                   style={styles.input}
-                  value={fish}
-                  onChange={(e) => setFish(e.target.value)}
-                  placeholder="Bass, walleye, pike..."
                 />
-              </label>
-
-              <div style={styles.twoColumn}>
-                <label style={styles.label}>
-                  Length
-                  <input
-                    style={styles.input}
-                    value={length}
-                    onChange={(e) => setLength(e.target.value)}
-                    placeholder="24"
-                  />
-                </label>
-
-                <label style={styles.label}>
-                  Weight
-                  <input
-                    style={styles.input}
-                    value={weight}
-                    onChange={(e) => setWeight(e.target.value)}
-                    placeholder="6.5"
-                  />
-                </label>
               </div>
 
-              <label style={styles.label}>
-                Lake
-                <input
-                  style={styles.input}
-                  value={lake}
-                  onChange={(e) => setLake(e.target.value)}
-                  placeholder="White Iron Lake"
-                />
-              </label>
+              <input
+                value={lake}
+                onChange={(e) =>
+                  setLake(e.target.value)
+                }
+                placeholder="Lake"
+                style={styles.input}
+              />
 
-              <label style={styles.label}>
-                Caption
-                <textarea
-                  style={styles.textarea}
-                  value={caption}
-                  onChange={(e) => setCaption(e.target.value)}
-                  placeholder="Tell the family about the catch..."
-                  rows={4}
-                />
-              </label>
+              <textarea
+                value={caption}
+                onChange={(e) =>
+                  setCaption(e.target.value)
+                }
+                placeholder="Tell the family about the catch..."
+                rows={3}
+                style={{
+                  ...styles.input,
+                  resize: "none",
+                }}
+              />
 
-              <label style={styles.photoUpload}>
-                <Camera size={22} />
-                <span>
-                  {photo ? photo.name : "Add a photo"}
-                </span>
+              <label style={styles.photoButton}>
+                <Camera size={20} />
+
+                {photo
+                  ? photo.name
+                  : "Add a photo"}
 
                 <input
                   type="file"
                   accept="image/*"
-                  onChange={(e) =>
-                    setPhoto(e.target.files?.[0] || null)
-                  }
                   style={{ display: "none" }}
+                  onChange={(e) =>
+                    setPhoto(
+                      e.target.files?.[0] ||
+                        null
+                    )
+                  }
                 />
               </label>
 
               <button
-                style={styles.submitButton}
-                onClick={handlePost}
+                onClick={postCatch}
                 disabled={posting}
+                style={styles.submitButton}
               >
-                {posting ? "Posting..." : "Post Catch"}
+                {posting
+                  ? "Posting..."
+                  : "Post Catch"}
               </button>
             </div>
           </div>
@@ -465,11 +533,19 @@ export default function Home() {
     </main>
   );
 }
-  const styles: Record<string, React.CSSProperties> = {
+
+/* =========================
+   STYLES
+========================= */
+
+const styles: Record<
+  string,
+  React.CSSProperties
+> = {
   page: {
     minHeight: "100vh",
-    background: colors.deepNavy,
-    color: colors.loonWhite,
+    background: "#06151a",
+    color: "#fff",
     paddingBottom: "90px",
     fontFamily:
       "Arial, Helvetica, sans-serif",
@@ -477,12 +553,8 @@ export default function Home() {
 
   hero: {
     position: "relative",
-    minHeight: "620px",
+    minHeight: "520px",
     overflow: "hidden",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    textAlign: "center",
   },
 
   heroImage: {
@@ -498,422 +570,400 @@ export default function Home() {
     position: "absolute",
     inset: 0,
     background:
-      "linear-gradient(to bottom, rgba(5,11,16,0.25), rgba(5,11,16,0.92))",
+      "linear-gradient(to bottom, rgba(3,12,16,0.15) 0%, rgba(3,12,16,0.35) 40%, #06151a 100%)",
   },
 
   heroContent: {
     position: "relative",
-    zIndex: 2,
-    padding: "40px 20px",
+    maxWidth: "900px",
+    margin: "0 auto",
+    padding: "45px 22px 35px",
   },
 
-  logoCircle: {
-    width: "76px",
-    height: "76px",
-    borderRadius: "50%",
-    background: "rgba(7,24,39,0.85)",
-    border: `2px solid ${colors.loonWhite}`,
+  topRow: {
     display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    margin: "0 auto 24px",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
   },
 
   eyebrow: {
-    margin: 0,
-    fontSize: "13px",
-    fontWeight: 700,
-    letterSpacing: "3px",
-    color: colors.sunYellow,
-  },
-
-  heroTitle: {
-    margin: "12px 0 8px",
-    fontSize: "clamp(48px, 10vw, 82px)",
-    lineHeight: 0.95,
+    color: "#f4b83f",
+    fontSize: "11px",
     fontWeight: 900,
-    letterSpacing: "-3px",
+    letterSpacing: "3px",
   },
 
-  heroSubtitle: {
-    margin: "0 0 30px",
-    fontSize: "18px",
-    color: colors.loonWhite,
-    opacity: 0.9,
+  title: {
+    margin: "7px 0 0",
+    fontSize: "46px",
+    lineHeight: 1,
+    fontWeight: 900,
+    letterSpacing: "-2px",
   },
 
-  heroButton: {
-    border: "none",
-    borderRadius: "999px",
-    background: colors.sunsetOrange,
-    color: "#ffffff",
-    padding: "15px 24px",
-    fontSize: "16px",
-    fontWeight: 700,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "9px",
-    cursor: "pointer",
-    boxShadow: "0 8px 25px rgba(0,0,0,0.3)",
+  subtitle: {
+    margin: "11px 0 0",
+    fontSize: "15px",
+    color: "rgba(255,255,255,0.75)",
   },
 
-  statsSection: {
-    maxWidth: "900px",
-    margin: "-35px auto 0",
-    position: "relative",
-    zIndex: 3,
-    display: "grid",
-    gridTemplateColumns: "repeat(3, 1fr)",
-    gap: "12px",
-    padding: "0 16px",
-  },
-
-  statCard: {
-    background: colors.navy,
-    border: "1px solid rgba(255,255,255,0.08)",
+  logoCircle: {
+    width: "110px",
+    height: "110px",
     borderRadius: "18px",
-    padding: "20px 10px",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: "5px",
-    boxShadow: "0 8px 25px rgba(0,0,0,0.2)",
+    overflow: "hidden",
+    border:
+      "1px solid rgba(255,255,255,0.2)",
+    boxShadow:
+      "0 12px 30px rgba(0,0,0,0.3)",
   },
 
-  feedSection: {
+  locationCard: {
+    marginTop: "70px",
+    display: "flex",
+    alignItems: "center",
+    gap: "14px",
+    padding: "17px",
+    borderRadius: "20px",
+    background:
+      "rgba(10,20,25,0.65)",
+    border:
+      "1px solid rgba(255,255,255,0.18)",
+    backdropFilter: "blur(15px)",
+    boxShadow:
+      "0 15px 40px rgba(0,0,0,0.3)",
+  },
+
+  locationIcon: {
+    width: "48px",
+    height: "48px",
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#f4b83f",
+    color: "#101820",
+  },
+
+  locationTitle: {
+    fontSize: "17px",
+    fontWeight: 900,
+  },
+
+  locationSub: {
+    marginTop: "3px",
+    fontSize: "13px",
+    color:
+      "rgba(255,255,255,0.65)",
+  },
+
+  postButton: {
+    width: "100%",
+    marginTop: "15px",
+    padding: "17px",
+    border: "none",
+    borderRadius: "17px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "10px",
+    background: "#f4b83f",
+    color: "#101820",
+    fontSize: "17px",
+    fontWeight: 900,
+    cursor: "pointer",
+    boxShadow:
+      "0 10px 30px rgba(244,184,63,0.25)",
+  },
+
+  feed: {
     maxWidth: "900px",
-    margin: "55px auto 0",
-    padding: "0 18px",
+    margin: "0 auto",
+    padding: "28px 22px",
   },
 
   sectionHeader: {
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-end",
     justifyContent: "space-between",
-    marginBottom: "22px",
+    marginBottom: "18px",
   },
 
   sectionEyebrow: {
-    margin: 0,
-    color: colors.sunYellow,
-    fontSize: "11px",
-    fontWeight: 800,
-    letterSpacing: "2px",
+    color: "#f4b83f",
+    fontSize: "10px",
+    fontWeight: 900,
+    letterSpacing: "3px",
   },
 
   sectionTitle: {
     margin: "5px 0 0",
-    fontSize: "30px",
+    fontSize: "29px",
+    fontWeight: 900,
   },
 
-  catchGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-    gap: "20px",
+  loadingCard: {
+    padding: "35px",
+    textAlign: "center",
+    color:
+      "rgba(255,255,255,0.5)",
+  },
+
+  emptyCard: {
+    padding: "45px 20px",
+    borderRadius: "22px",
+    textAlign: "center",
+    background:
+      "rgba(255,255,255,0.05)",
+    border:
+      "1px solid rgba(255,255,255,0.1)",
   },
 
   catchCard: {
-    background: colors.navy,
-    borderRadius: "20px",
     overflow: "hidden",
-    border: "1px solid rgba(255,255,255,0.08)",
-    boxShadow: "0 8px 30px rgba(0,0,0,0.18)",
+    marginBottom: "18px",
+    borderRadius: "22px",
+    background:
+      "rgba(11,27,34,0.82)",
+    border:
+      "1px solid rgba(255,255,255,0.12)",
+    boxShadow:
+      "0 12px 35px rgba(0,0,0,0.25)",
+    backdropFilter: "blur(12px)",
   },
 
   catchImage: {
     width: "100%",
-    height: "270px",
+    height: "300px",
     objectFit: "cover",
     display: "block",
   },
 
-  noPhoto: {
-    height: "270px",
-    background:
-      "linear-gradient(135deg, #0d3550, #071827)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+  catchContent: {
+    padding: "19px",
   },
 
-  catchBody: {
-    padding: "20px",
-  },
-
-  catchTop: {
+  catchHeader: {
     display: "flex",
     justifyContent: "space-between",
-    gap: "15px",
   },
 
-  catchName: {
-    margin: 0,
-    fontSize: "21px",
+  catchPerson: {
+    color: "#f4b83f",
+    fontSize: "13px",
+    fontWeight: 800,
   },
 
-  catchFish: {
-    margin: "4px 0 0",
-    color: colors.sunsetOrange,
-    fontWeight: 700,
+  fishName: {
+    margin: "3px 0 0",
+    fontSize: "27px",
+    fontWeight: 900,
   },
 
-  catchDetails: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: "8px",
-    marginTop: "15px",
+  catchStats: {
+    display: "grid",
+    gridTemplateColumns:
+      "1fr 1fr 1.5fr",
+    marginTop: "17px",
+    padding:
+      "13px 0",
+    borderTop:
+      "1px solid rgba(255,255,255,0.08)",
+    borderBottom:
+      "1px solid rgba(255,255,255,0.08)",
+  },
+
+  lakeStat: {
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
   },
 
   caption: {
-    color: "rgba(245,247,247,0.78)",
-    lineHeight: 1.5,
-    margin: "16px 0 0",
+    margin: "15px 0 0",
+    color:
+      "rgba(255,255,255,0.68)",
+    lineHeight: 1.6,
+    fontSize: "14px",
   },
 
-  commentRow: {
-    marginTop: "18px",
+  social: {
+    display: "flex",
+    alignItems: "center",
+    gap: "20px",
+    marginTop: "15px",
+  },
+
+  socialButton: {
     display: "flex",
     alignItems: "center",
     gap: "7px",
-    color: "rgba(245,247,247,0.55)",
-    fontSize: "13px",
-  },
-
-  emptyState: {
-    background: colors.navy,
-    borderRadius: "20px",
-    padding: "45px 25px",
-    textAlign: "center",
-    border: "1px solid rgba(255,255,255,0.08)",
-  },
-
-  primaryButton: {
-    marginTop: "20px",
     border: "none",
-    borderRadius: "12px",
-    background: colors.sunsetOrange,
-    color: "#ffffff",
-    padding: "13px 20px",
-    fontWeight: 700,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "8px",
+    background: "transparent",
+    color:
+      "rgba(255,255,255,0.5)",
     cursor: "pointer",
   },
 
-  tripSection: {
-    maxWidth: "900px",
-    margin: "45px auto",
-    padding: "0 18px",
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-    gap: "15px",
+  time: {
+    marginLeft: "auto",
+    color:
+      "rgba(255,255,255,0.35)",
+    fontSize: "12px",
   },
 
   tripCard: {
-    background: colors.navy,
-    borderRadius: "18px",
-    padding: "20px",
+    marginTop: "30px",
+    padding: "22px",
+    borderRadius: "23px",
+    background:
+      "linear-gradient(145deg, rgba(26,49,57,0.85), rgba(7,20,25,0.9))",
+    border:
+      "1px solid rgba(255,255,255,0.13)",
+    backdropFilter: "blur(12px)",
+  },
+
+  tripHeader: {
     display: "flex",
     alignItems: "center",
-    gap: "15px",
-    border: "1px solid rgba(255,255,255,0.08)",
+    gap: "10px",
   },
 
-  tripIcon: {
-    width: "48px",
-    height: "48px",
-    flexShrink: 0,
-    borderRadius: "14px",
-    background: colors.lakeBlue,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+  tripStats: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(3,1fr)",
+    marginTop: "22px",
+    textAlign: "center",
   },
 
-  tripLabel: {
-    margin: 0,
-    fontSize: "10px",
-    fontWeight: 800,
-    letterSpacing: "1.5px",
-    color: colors.sunYellow,
-  },
-
-  tripTitle: {
-    margin: "4px 0",
-    fontSize: "17px",
-  },
-
-  tripText: {
-    margin: 0,
-    color: "rgba(245,247,247,0.6)",
-    fontSize: "13px",
-  },
-
-  bottomNav: {
+  nav: {
     position: "fixed",
+    zIndex: 80,
     bottom: 0,
     left: 0,
     right: 0,
-    height: "72px",
-    background: "rgba(5,11,16,0.96)",
-    borderTop: "1px solid rgba(255,255,255,0.08)",
+    height: "74px",
     display: "flex",
-    alignItems: "center",
     justifyContent: "center",
-    gap: "65px",
-    zIndex: 20,
+    alignItems: "center",
+    gap: "55px",
+    background:
+      "rgba(3,13,18,0.94)",
+    borderTop:
+      "1px solid rgba(255,255,255,0.12)",
+    backdropFilter: "blur(18px)",
+  },
+
+  navActive: {
+    border: "none",
+    background: "transparent",
+    color: "#f4b83f",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "4px",
+    fontWeight: 800,
   },
 
   navItem: {
     border: "none",
     background: "transparent",
-    color: colors.loonWhite,
+    color:
+      "rgba(255,255,255,0.4)",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     gap: "4px",
-    fontSize: "11px",
-    cursor: "pointer",
+    fontWeight: 700,
   },
 
-  navPost: {
-    width: "54px",
-    height: "54px",
-    borderRadius: "50%",
-    border: "4px solid " + colors.deepNavy,
-    background: colors.sunsetOrange,
-    color: "#ffffff",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    cursor: "pointer",
-    marginTop: "-28px",
-    boxShadow: "0 5px 20px rgba(0,0,0,0.3)",
-  },
-
-  modalOverlay: {
+  modalBackground: {
     position: "fixed",
     inset: 0,
-    background: "rgba(0,0,0,0.75)",
-    zIndex: 50,
+    zIndex: 100,
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-end",
     justifyContent: "center",
-    padding: "20px",
+    background:
+      "rgba(0,0,0,0.75)",
   },
 
   modal: {
     width: "100%",
-    maxWidth: "520px",
-    maxHeight: "90vh",
+    maxWidth: "700px",
+    maxHeight: "92vh",
     overflowY: "auto",
-    background: colors.navy,
-    borderRadius: "22px",
-    border: "1px solid rgba(255,255,255,0.1)",
-    padding: "25px",
+    padding: "24px 20px 30px",
+    borderRadius:
+      "25px 25px 0 0",
+    background: "#0a2028",
+    border:
+      "1px solid rgba(255,255,255,0.13)",
   },
 
   modalHeader: {
     display: "flex",
-    alignItems: "flex-start",
     justifyContent: "space-between",
-    marginBottom: "25px",
-  },
-
-  modalEyebrow: {
-    margin: 0,
-    color: colors.sunYellow,
-    fontSize: "10px",
-    fontWeight: 800,
-    letterSpacing: "2px",
-  },
-
-  modalTitle: {
-    margin: "5px 0 0",
-    fontSize: "28px",
+    marginBottom: "20px",
   },
 
   closeButton: {
-    border: "none",
-    background: "rgba(255,255,255,0.08)",
-    color: colors.loonWhite,
     width: "40px",
     height: "40px",
     borderRadius: "50%",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    cursor: "pointer",
+    border: "none",
+    background:
+      "rgba(255,255,255,0.08)",
+    color: "#fff",
   },
 
   form: {
     display: "flex",
     flexDirection: "column",
-    gap: "17px",
-  },
-
-  label: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "7px",
-    fontSize: "13px",
-    fontWeight: 700,
+    gap: "11px",
   },
 
   input: {
-    width: "100%",
     boxSizing: "border-box",
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: colors.deepNavy,
-    color: colors.loonWhite,
-    borderRadius: "10px",
-    padding: "13px",
+    width: "100%",
+    padding: "14px",
+    borderRadius: "13px",
+    border:
+      "1px solid rgba(255,255,255,0.1)",
+    background: "#06151a",
+    color: "#fff",
     fontSize: "15px",
     outline: "none",
   },
 
-  textarea: {
-    width: "100%",
-    boxSizing: "border-box",
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: colors.deepNavy,
-    color: colors.loonWhite,
-    borderRadius: "10px",
-    padding: "13px",
-    fontSize: "15px",
-    resize: "vertical",
-    outline: "none",
-    fontFamily: "inherit",
-  },
-
-  twoColumn: {
+  twoInputs: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
-    gap: "12px",
+    gap: "10px",
   },
 
-  photoUpload: {
-    border: "1px dashed rgba(255,255,255,0.25)",
-    borderRadius: "12px",
-    minHeight: "65px",
+  photoButton: {
+    minHeight: "52px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: "10px",
-    color: colors.loonWhite,
+    gap: "8px",
+    borderRadius: "13px",
+    border:
+      "1px dashed rgba(244,184,63,0.5)",
+    color: "#f4b83f",
     cursor: "pointer",
-    background: "rgba(255,255,255,0.03)",
   },
 
   submitButton: {
-    border: "none",
-    borderRadius: "12px",
-    background: colors.sunsetOrange,
-    color: "#ffffff",
     padding: "15px",
-    fontSize: "16px",
-    fontWeight: 800,
+    border: "none",
+    borderRadius: "13px",
+    background: "#f4b83f",
+    color: "#101820",
+    fontSize: "15px",
+    fontWeight: 900,
     cursor: "pointer",
   },
 };
