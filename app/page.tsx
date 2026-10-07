@@ -22,7 +22,7 @@ type Catch = {
   weight: string;
   lake: string;
   caption: string;
-  photo_url: string | null;
+  image_url: string | null;
   created_at: string;
 };
 
