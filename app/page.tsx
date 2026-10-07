@@ -158,9 +158,17 @@ export default function Home() {
 
         <div style={styles.heroContent}>
           <div style={styles.logoCircle}>
-            <Fish size={34} color={colors.loonWhite} />
-          </div>
-
+  <img
+    src="/loon-logo.png.png"
+    alt="Ely Fishing loon logo"
+    style={{
+      width: "110px",
+      height: "110px",
+      objectFit: "cover",
+      borderRadius: "18px",
+    }}
+  />
+</div>
           <p style={styles.eyebrow}>FAMILY FISHING TRIP</p>
 
           <h1 style={styles.heroTitle}>Ely Fishing</h1>
