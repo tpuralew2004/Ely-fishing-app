@@ -1,8 +1,129 @@
 "use client";
 
-import { Heart, MessageCircle, Camera, Trophy, MapPin, Users, Fish } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  Heart,
+  MessageCircle,
+  Camera,
+  Trophy,
+  MapPin,
+  Users,
+  Fish,
+  X,
+} from "lucide-react";
+import { supabase } from "./lib/supabase";
+
+type Catch = {
+  id: number;
+  name: string;
+  fish_species: string;
+  length: number;
+  weight: number | null;
+  lake: string;
+  caption: string | null;
+  image_url: string | null;
+  created_at: string;
+};
 
 export default function Home() {
+  const [catches, setCatches] = useState<Catch[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const [name, setName] = useState("");
+  const [fishSpecies, setFishSpecies] = useState("");
+  const [length, setLength] = useState("");
+  const [weight, setWeight] = useState("");
+  const [lake, setLake] = useState("");
+  const [caption, setCaption] = useState("");
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [posting, setPosting] = useState(false);
+
+  useEffect(() => {
+    loadCatches();
+  }, []);
+
+  async function loadCatches() {
+    const { data, error } = await supabase
+      .from("catches")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (!error && data) {
+      setCatches(data);
+    }
+
+    setLoading(false);
+  }
+
+  async function postCatch() {
+    if (!name || !fishSpecies || !length || !lake) {
+      alert("Please fill in your name, fish species, length, and lake.");
+      return;
+    }
+
+    setPosting(true);
+
+    let imageUrl: string | null = null;
+
+    if (photo) {
+      const fileExtension = photo.name.split(".").pop();
+      const fileName = `${crypto.randomUUID()}.${fileExtension}`;
+      const filePath = `private/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("catch-photos")
+        .upload(filePath, photo);
+
+      if (uploadError) {
+        alert("Photo upload failed: " + uploadError.message);
+        setPosting(false);
+        return;
+      }
+
+      const { data: signedUrlData, error: signedUrlError } =
+        await supabase.storage
+          .from("catch-photos")
+          .createSignedUrl(filePath, 60 * 60 * 24 * 365);
+
+      if (signedUrlError) {
+        alert("Could not create photo link.");
+        setPosting(false);
+        return;
+      }
+
+      imageUrl = signedUrlData.signedUrl;
+    }
+
+    const { error } = await supabase.from("catches").insert({
+      name,
+      fish_species: fishSpecies,
+      length: Number(length),
+      weight: weight ? Number(weight) : null,
+      lake,
+      caption: caption || null,
+      image_url: imageUrl,
+    });
+
+    if (error) {
+      alert("Could not save catch: " + error.message);
+      setPosting(false);
+      return;
+    }
+
+    setName("");
+    setFishSpecies("");
+    setLength("");
+    setWeight("");
+    setLake("");
+    setCaption("");
+    setPhoto(null);
+    setShowForm(false);
+    setPosting(false);
+
+    loadCatches();
+  }
+
   return (
     <main
       style={{
@@ -59,6 +180,7 @@ export default function Home() {
           </p>
 
           <button
+            onClick={() => setShowForm(true)}
             style={{
               marginTop: 16,
               width: "100%",
@@ -76,6 +198,130 @@ export default function Home() {
           </button>
         </section>
 
+        {showForm && (
+          <section
+            style={{
+              background: "white",
+              borderRadius: 18,
+              padding: 20,
+              marginBottom: 22,
+              boxShadow: "0 3px 12px rgba(0,0,0,0.08)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <h2 style={{ margin: 0 }}>📸 Post a Catch</h2>
+
+              <button
+                onClick={() => setShowForm(false)}
+                style={{
+                  border: "none",
+                  background: "#eef2ef",
+                  borderRadius: "50%",
+                  width: 36,
+                  height: 36,
+                  cursor: "pointer",
+                }}
+              >
+                <X size={19} />
+              </button>
+            </div>
+
+            <div style={{ marginTop: 18 }}>
+              <label>Name</label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Who caught it?"
+                style={inputStyle}
+              />
+
+              <label>Fish species</label>
+              <input
+                value={fishSpecies}
+                onChange={(e) => setFishSpecies(e.target.value)}
+                placeholder="Walleye, Northern Pike, Bass..."
+                style={inputStyle}
+              />
+
+              <label>Length (inches)</label>
+              <input
+                type="number"
+                value={length}
+                onChange={(e) => setLength(e.target.value)}
+                placeholder="24"
+                style={inputStyle}
+              />
+
+              <label>Weight (optional)</label>
+              <input
+                type="number"
+                value={weight}
+                onChange={(e) => setWeight(e.target.value)}
+                placeholder="5.2"
+                style={inputStyle}
+              />
+
+              <label>Lake</label>
+              <input
+                value={lake}
+                onChange={(e) => setLake(e.target.value)}
+                placeholder="White Iron Lake"
+                style={inputStyle}
+              />
+
+              <label>Caption</label>
+              <textarea
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+                placeholder="Tell the family about the catch..."
+                rows={4}
+                style={{
+                  ...inputStyle,
+                  resize: "vertical",
+                }}
+              />
+
+              <label>Photo</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) =>
+                  setPhoto(e.target.files?.[0] || null)
+                }
+                style={{
+                  width: "100%",
+                  marginTop: 8,
+                  marginBottom: 18,
+                }}
+              />
+
+              <button
+                onClick={postCatch}
+                disabled={posting}
+                style={{
+                  width: "100%",
+                  padding: "14px",
+                  border: "none",
+                  borderRadius: 12,
+                  background: posting ? "#8aa895" : "#2d7a4b",
+                  color: "white",
+                  fontSize: 16,
+                  fontWeight: "bold",
+                  cursor: posting ? "default" : "pointer",
+                }}
+              >
+                {posting ? "Posting..." : "Post Catch"}
+              </button>
+            </div>
+          </section>
+        )}
+
         <div
           style={{
             display: "grid",
@@ -85,7 +331,10 @@ export default function Home() {
           }}
         >
           <QuickButton icon={<Fish size={23} />} text="Catches" />
-          <QuickButton icon={<Trophy size={23} />} text="Leaderboard" />
+          <QuickButton
+            icon={<Trophy size={23} />}
+            text="Leaderboard"
+          />
           <QuickButton icon={<Users size={23} />} text="Family" />
         </div>
 
@@ -98,28 +347,41 @@ export default function Home() {
           }}
         >
           <h2 style={{ margin: 0, fontSize: 21 }}>Recent Catches</h2>
-          <span style={{ color: "#718078", fontSize: 13 }}>Trip Feed</span>
+          <span style={{ color: "#718078", fontSize: 13 }}>
+            Trip Feed
+          </span>
         </div>
 
-        <CatchPost
-          name="Dad"
-          time="Today"
-          lake="White Iron Lake"
-          fish="Walleye"
-          length="24 in"
-          emoji="🐟"
-          caption="First good one of the trip! Hopefully there are bigger ones out there."
-        />
-
-        <CatchPost
-          name="Tom"
-          time="Today"
-          lake="Ely, Minnesota"
-          fish="Northern Pike"
-          length="31 in"
-          emoji="🐊"
-          caption="Finally got one! This thing put up a fight."
-        />
+        {loading ? (
+          <p style={{ color: "#718078" }}>Loading catches...</p>
+        ) : catches.length === 0 ? (
+          <section
+            style={{
+              background: "white",
+              borderRadius: 18,
+              padding: 25,
+              textAlign: "center",
+              color: "#718078",
+              marginBottom: 20,
+            }}
+          >
+            No catches posted yet. Be the first!
+          </section>
+        ) : (
+          catches.map((item) => (
+            <CatchPost
+              key={item.id}
+              name={item.name}
+              time={new Date(item.created_at).toLocaleDateString()}
+              lake={item.lake}
+              fish={item.fish_species}
+              length={`${item.length} in`}
+              weight={item.weight}
+              imageUrl={item.image_url}
+              caption={item.caption || ""}
+            />
+          ))
+        )}
 
         <section
           style={{
@@ -140,9 +402,29 @@ export default function Home() {
             }}
           >
             <Stat number="12" label="Family Members" />
-            <Stat number="2" label="Catches" />
-            <Stat number="2" label="Species" />
-            <Stat number="31 in" label="Biggest Fish" />
+
+            <Stat
+              number={String(catches.length)}
+              label="Catches"
+            />
+
+            <Stat
+              number={String(
+                new Set(catches.map((c) => c.fish_species)).size
+              )}
+              label="Species"
+            />
+
+            <Stat
+              number={
+                catches.length > 0
+                  ? `${Math.max(
+                      ...catches.map((c) => c.length)
+                    )} in`
+                  : "0 in"
+              }
+              label="Biggest Fish"
+            />
           </div>
         </section>
       </div>
@@ -169,16 +451,47 @@ export default function Home() {
             justifyContent: "space-around",
           }}
         >
-          <NavItem icon={<Camera size={21} />} text="Feed" active />
-          <NavItem icon={<Fish size={21} />} text="Fishing" />
-          <NavItem icon={<Trophy size={21} />} text="Leaders" />
-          <NavItem icon={<MapPin size={21} />} text="Trip" />
-          <NavItem icon={<Users size={21} />} text="Family" />
+          <NavItem
+            icon={<Camera size={21} />}
+            text="Feed"
+            active
+          />
+
+          <NavItem
+            icon={<Fish size={21} />}
+            text="Fishing"
+          />
+
+          <NavItem
+            icon={<Trophy size={21} />}
+            text="Leaders"
+          />
+
+          <NavItem
+            icon={<MapPin size={21} />}
+            text="Trip"
+          />
+
+          <NavItem
+            icon={<Users size={21} />}
+            text="Family"
+          />
         </div>
       </nav>
     </main>
   );
 }
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "12px",
+  marginTop: 6,
+  marginBottom: 15,
+  border: "1px solid #d5ddd8",
+  borderRadius: 10,
+  fontSize: 15,
+  fontFamily: "inherit",
+};
 
 function QuickButton({
   icon,
@@ -199,9 +512,16 @@ function QuickButton({
         boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 5 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          marginBottom: 5,
+        }}
+      >
         {icon}
       </div>
+
       <div style={{ fontSize: 12 }}>{text}</div>
     </button>
   );
@@ -213,7 +533,8 @@ function CatchPost({
   lake,
   fish,
   length,
-  emoji,
+  weight,
+  imageUrl,
   caption,
 }: {
   name: string;
@@ -221,7 +542,8 @@ function CatchPost({
   lake: string;
   fish: string;
   length: string;
-  emoji: string;
+  weight: number | null;
+  imageUrl: string | null;
   caption: string;
 }) {
   return (
@@ -234,24 +556,50 @@ function CatchPost({
         boxShadow: "0 3px 12px rgba(0,0,0,0.07)",
       }}
     >
-      <div
-        style={{
-          height: 270,
-          background: "linear-gradient(135deg, #86b79b, #2d6845)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 80,
-        }}
-      >
-        {emoji}
-      </div>
+      {imageUrl ? (
+        <img
+          src={imageUrl}
+          alt={`${fish} caught by ${name}`}
+          style={{
+            width: "100%",
+            height: 270,
+            objectFit: "cover",
+            display: "block",
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            height: 270,
+            background:
+              "linear-gradient(135deg, #86b79b, #2d6845)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 80,
+          }}
+        >
+          🐟
+        </div>
+      )}
 
       <div style={{ padding: 17 }}>
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+          }}
+        >
           <div>
             <strong style={{ fontSize: 17 }}>{name}</strong>
-            <div style={{ fontSize: 12, color: "#78837c", marginTop: 3 }}>
+
+            <div
+              style={{
+                fontSize: 12,
+                color: "#78837c",
+                marginTop: 3,
+              }}
+            >
               {time} • {lake}
             </div>
           </div>
@@ -272,9 +620,19 @@ function CatchPost({
 
         <div style={{ marginTop: 14, fontSize: 14 }}>
           <strong>{length}</strong>
+          {weight ? ` • ${weight} lb` : ""}
         </div>
 
-        <p style={{ lineHeight: 1.5, marginBottom: 12 }}>{caption}</p>
+        {caption && (
+          <p
+            style={{
+              lineHeight: 1.5,
+              marginBottom: 12,
+            }}
+          >
+            {caption}
+          </p>
+        )}
 
         <div
           style={{
@@ -285,11 +643,23 @@ function CatchPost({
             color: "#68736c",
           }}
         >
-          <span style={{ display: "flex", gap: 5, alignItems: "center" }}>
+          <span
+            style={{
+              display: "flex",
+              gap: 5,
+              alignItems: "center",
+            }}
+          >
             <Heart size={19} /> Like
           </span>
 
-          <span style={{ display: "flex", gap: 5, alignItems: "center" }}>
+          <span
+            style={{
+              display: "flex",
+              gap: 5,
+              alignItems: "center",
+            }}
+          >
             <MessageCircle size={19} /> Comment
           </span>
         </div>
@@ -313,8 +683,23 @@ function Stat({
         padding: 14,
       }}
     >
-      <div style={{ fontSize: 22, fontWeight: "bold" }}>{number}</div>
-      <div style={{ fontSize: 12, opacity: 0.75 }}>{label}</div>
+      <div
+        style={{
+          fontSize: 22,
+          fontWeight: "bold",
+        }}
+      >
+        {number}
+      </div>
+
+      <div
+        style={{
+          fontSize: 12,
+          opacity: 0.75,
+        }}
+      >
+        {label}
+      </div>
     </div>
   );
 }
@@ -337,9 +722,16 @@ function NavItem({
         fontWeight: active ? "bold" : "normal",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 3 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          marginBottom: 3,
+        }}
+      >
         {icon}
       </div>
+
       {text}
     </div>
   );
