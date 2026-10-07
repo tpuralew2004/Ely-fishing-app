@@ -145,17 +145,12 @@ export default function Home() {
         <div style={styles.heroDark} />
 
         <div style={styles.heroContent}>
-          <div style={styles.topRow}>
-            <div>
-              <div style={styles.eyebrow}>
-                FAMILY FISHING TRIP
-              </div>
 
-              <h1 style={styles.title}>Ely Fishing</h1>
+          {/* CENTERED LOGO + TITLE */}
 
-              <p style={styles.subtitle}>
-                White Iron Lake • Minnesota
-              </p>
+          <div style={styles.centerHero}>
+            <div style={styles.eyebrow}>
+              FAMILY FISHING TRIP
             </div>
 
             <div style={styles.fishLogo}>
@@ -165,6 +160,14 @@ export default function Home() {
                 style={styles.logoImage}
               />
             </div>
+
+            <h1 style={styles.title}>
+              Ely Fishing
+            </h1>
+
+            <p style={styles.subtitle}>
+              White Iron Lake • Minnesota
+            </p>
           </div>
 
           {/* LOCATION */}
@@ -368,7 +371,6 @@ export default function Home() {
           Feed
         </button>
 
-        {/* FIXED FISHING BUTTON */}
         <button
           onClick={() => {
             window.location.href = "/fishing-location";
@@ -533,7 +535,7 @@ const styles: Record<
 
   hero: {
     position: "relative",
-    minHeight: "520px",
+    minHeight: "570px",
     overflow: "hidden",
   },
 
@@ -557,13 +559,16 @@ const styles: Record<
     position: "relative",
     maxWidth: "900px",
     margin: "0 auto",
-    padding: "45px 22px 35px",
+    padding: "42px 22px 35px",
   },
 
-  topRow: {
+  /* NEW CENTERED HERO */
+
+  centerHero: {
     display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
+    flexDirection: "column",
+    alignItems: "center",
+    textAlign: "center",
   },
 
   eyebrow: {
@@ -574,8 +579,8 @@ const styles: Record<
   },
 
   title: {
-    margin: "7px 0 0",
-    fontSize: "46px",
+    margin: "12px 0 0",
+    fontSize: "48px",
     lineHeight: 1,
     fontWeight: 900,
     letterSpacing: "-2px",
@@ -584,33 +589,37 @@ const styles: Record<
   subtitle: {
     margin: "11px 0 0",
     fontSize: "15px",
-    color: "rgba(255,255,255,0.75)",
+    color: "rgba(255,255,255,0.78)",
   },
 
+  /* BIGGER LOGO */
+
   fishLogo: {
-    width: "64px",
-    height: "64px",
+    width: "145px",
+    height: "145px",
     borderRadius: "50%",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
+    marginTop: "18px",
     background:
-      "rgba(0,0,0,0.35)",
+      "rgba(0,0,0,0.30)",
     border:
-      "1px solid rgba(255,255,255,0.2)",
-    color: colors.sunYellow,
+      "1px solid rgba(255,255,255,0.25)",
+    boxShadow:
+      "0 12px 45px rgba(0,0,0,0.35), 0 0 35px rgba(255,200,61,0.12)",
     backdropFilter: "blur(10px)",
   },
 
   logoImage: {
-    width: "56px",
-    height: "56px",
+    width: "128px",
+    height: "128px",
     objectFit: "contain",
     display: "block",
   },
 
   locationCard: {
-    marginTop: "70px",
+    marginTop: "55px",
     display: "flex",
     alignItems: "center",
     gap: "14px",
@@ -908,7 +917,6 @@ const styles: Record<
     background:
       "rgba(255,255,255,0.08)",
     color: "#fff",
-    cursor: "pointer",
   },
 
   form: {
