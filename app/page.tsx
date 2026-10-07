@@ -10,756 +10,461 @@ import {
   Heart,
   MessageCircle,
   X,
+  Plus,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 
 type Catch = {
-  id: number;
+  id: string;
   name: string;
-  fish_species: string;
-  length: number;
+  species: string;
   weight: number | null;
-  lake: string;
-  caption: string | null;
-  image_url: string | null;
+  length: number | null;
+  notes: string | null;
+  photo_path: string | null;
   created_at: string;
 };
 
 export default function Home() {
   const [catches, setCatches] = useState<Catch[]>([]);
-  const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showPost, setShowPost] = useState(false);
 
   const [name, setName] = useState("");
-  const [fishSpecies, setFishSpecies] = useState("");
-  const [length, setLength] = useState("");
+  const [species, setSpecies] = useState("");
   const [weight, setWeight] = useState("");
-  const [lake, setLake] = useState("");
-  const [caption, setCaption] = useState("");
+  const [length, setLength] = useState("");
+  const [notes, setNotes] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [posting, setPosting] = useState(false);
 
-  useEffect(() => {
-    loadCatches();
-  }, []);
-
   async function loadCatches() {
+    setLoading(true);
+
     const { data, error } = await supabase
       .from("catches")
       .select("*")
       .order("created_at", { ascending: false });
 
     if (!error && data) {
-      setCatches(data);
+      const withPhotos = await Promise.all(
+        data.map(async (item) => {
+          if (!item.photo_path) return item;
+
+          const { data: signed } = await supabase.storage
+            .from("catch-photos")
+            .createSignedUrl(item.photo_path, 60 * 60 * 24);
+
+          return {
+            ...item,
+            photo_path: signed?.signedUrl || null,
+          };
+        })
+      );
+
+      setCatches(withPhotos);
     }
 
     setLoading(false);
   }
 
+  useEffect(() => {
+    loadCatches();
+  }, []);
+
   async function postCatch() {
-    if (!name || !fishSpecies || !length || !lake) {
-      alert("Please fill in your name, fish species, length, and lake.");
+    if (!name || !species) {
+      alert("Please enter your name and the fish species.");
       return;
     }
 
     setPosting(true);
 
-    let imageUrl: string | null = null;
+    try {
+      let photoPath = null;
 
-    if (photo) {
-      const extension = photo.name.split(".").pop();
-      const fileName = `${crypto.randomUUID()}.${extension}`;
-      const filePath = `private/${fileName}`;
+      if (photo) {
+        const fileExt = photo.name.split(".").pop();
+        const fileName = `${Date.now()}-${Math.random()
+          .toString(36)
+          .substring(2)}.${fileExt}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("catch-photos")
-        .upload(filePath, photo);
+        const path = `private/${fileName}`;
 
-      if (uploadError) {
-        alert("Photo upload failed: " + uploadError.message);
-        setPosting(false);
-        return;
-      }
-
-      const { data: signedUrlData, error: signedUrlError } =
-        await supabase.storage
+        const { error: uploadError } = await supabase.storage
           .from("catch-photos")
-          .createSignedUrl(filePath, 60 * 60 * 24 * 365);
+          .upload(path, photo);
 
-      if (signedUrlError) {
-        alert("Could not create photo link.");
-        setPosting(false);
-        return;
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        photoPath = path;
       }
 
-      imageUrl = signedUrlData.signedUrl;
+      const { error } = await supabase.from("catches").insert({
+        name,
+        species,
+        weight: weight ? Number(weight) : null,
+        length: length ? Number(length) : null,
+        notes: notes || null,
+        photo_path: photoPath,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setName("");
+      setSpecies("");
+      setWeight("");
+      setLength("");
+      setNotes("");
+      setPhoto(null);
+      setShowPost(false);
+
+      await loadCatches();
+    } catch (error) {
+      console.error(error);
+      alert("Something went wrong posting the catch.");
     }
 
-    const { error } = await supabase.from("catches").insert({
-      name,
-      fish_species: fishSpecies,
-      length: Number(length),
-      weight: weight ? Number(weight) : null,
-      lake,
-      caption: caption || null,
-      image_url: imageUrl,
-    });
-
-    if (error) {
-      alert("Could not save catch: " + error.message);
-      setPosting(false);
-      return;
-    }
-
-    setName("");
-    setFishSpecies("");
-    setLength("");
-    setWeight("");
-    setLake("");
-    setCaption("");
-    setPhoto(null);
-    setShowForm(false);
     setPosting(false);
-
-    loadCatches();
   }
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#eef4ef",
-        color: "#17231c",
-        fontFamily: "Arial, sans-serif",
-        paddingBottom: 90,
-      }}
-    >
-      {/* HEADER */}
+    <main className="min-h-screen bg-[#071d18] text-white pb-24">
+      {/* HERO */}
+      <section className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-[#123f34] via-[#0b2b24] to-[#071d18]" />
 
-      <header
-        style={{
-          background: "#173f2a",
-          color: "white",
-          padding: "24px 18px",
-        }}
-      >
-        <div
-          style={{
-            maxWidth: 650,
-            margin: "0 auto",
-          }}
-        >
-          <div
-            style={{
-              fontSize: 12,
-              letterSpacing: 2,
-              opacity: 0.75,
-            }}
-          >
-            FAMILY FISHING TRIP
-          </div>
+        <div className="absolute -top-24 -right-20 h-72 w-72 rounded-full bg-emerald-500/10 blur-3xl" />
+        <div className="absolute top-40 -left-24 h-72 w-72 rounded-full bg-blue-500/10 blur-3xl" />
 
-          <h1
-            style={{
-              margin: "6px 0",
-              fontSize: 30,
-            }}
-          >
-            🎣 Ely Fishing Trip
-          </h1>
+        <div className="relative px-5 pt-10 pb-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium tracking-widest text-emerald-300 uppercase">
+                White Iron Lake
+              </p>
 
-          <div
-            style={{
-              fontSize: 14,
-              opacity: 0.8,
-            }}
-          >
-            Ely, Minnesota
-          </div>
-        </div>
-      </header>
+              <h1 className="mt-1 text-4xl font-black tracking-tight">
+                Ely Fishing
+              </h1>
 
-      <div
-        style={{
-          maxWidth: 650,
-          margin: "0 auto",
-          padding: 18,
-        }}
-      >
-        {/* WELCOME */}
-
-        <section
-          style={{
-            background: "white",
-            borderRadius: 20,
-            padding: 22,
-            marginBottom: 18,
-            boxShadow: "0 4px 15px rgba(0,0,0,0.07)",
-          }}
-        >
-          <div
-            style={{
-              fontSize: 42,
-              marginBottom: 8,
-            }}
-          >
-            🌲🎣
-          </div>
-
-          <h2
-            style={{
-              margin: "0 0 6px",
-              fontSize: 24,
-            }}
-          >
-            Welcome to the trip!
-          </h2>
-
-          <p
-            style={{
-              margin: 0,
-              color: "#68736c",
-              lineHeight: 1.5,
-            }}
-          >
-            Share your catches, photos, stories, and memories
-            with the family.
-          </p>
-
-          <button
-            onClick={() => setShowForm(true)}
-            style={{
-              width: "100%",
-              marginTop: 18,
-              padding: 16,
-              border: "none",
-              borderRadius: 13,
-              background: "#2d7a4b",
-              color: "white",
-              fontSize: 17,
-              fontWeight: "bold",
-              cursor: "pointer",
-            }}
-          >
-            📸 Post a Catch
-          </button>
-        </section>
-
-        {/* POST FORM */}
-
-        {showForm && (
-          <section
-            style={{
-              background: "white",
-              borderRadius: 20,
-              padding: 20,
-              marginBottom: 20,
-              boxShadow: "0 4px 15px rgba(0,0,0,0.07)",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <h2 style={{ margin: 0 }}>
-                📸 Post a Catch
-              </h2>
-
-              <button
-                onClick={() => setShowForm(false)}
-                style={{
-                  border: "none",
-                  background: "#eef2ef",
-                  borderRadius: "50%",
-                  width: 36,
-                  height: 36,
-                  cursor: "pointer",
-                }}
-              >
-                <X size={19} />
-              </button>
+              <p className="mt-2 text-sm text-emerald-100/70">
+                Family Fishing Trip • Minnesota
+              </p>
             </div>
 
-            <label>Name</label>
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/10 backdrop-blur">
+              <Fish size={25} />
+            </div>
+          </div>
 
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Who caught it?"
-              style={inputStyle}
-            />
+          {/* Trip card */}
+          <div className="mt-7 rounded-3xl border border-white/10 bg-white/[0.08] p-5 shadow-2xl backdrop-blur">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-400 text-[#071d18]">
+                <MapPin size={22} />
+              </div>
 
-            <label>Fish species</label>
+              <div>
+                <p className="font-bold">White Iron Lake</p>
+                <p className="text-sm text-white/60">
+                  Ely, Minnesota
+                </p>
+              </div>
+            </div>
 
-            <input
-              value={fishSpecies}
-              onChange={(e) => setFishSpecies(e.target.value)}
-              placeholder="Walleye, Northern Pike, Bass..."
-              style={inputStyle}
-            />
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <div className="rounded-2xl bg-black/20 p-4">
+                <p className="text-xs text-white/50">Family</p>
+                <p className="mt-1 text-xl font-bold">12</p>
+                <p className="text-xs text-white/50">People</p>
+              </div>
 
-            <label>Length (inches)</label>
+              <div className="rounded-2xl bg-black/20 p-4">
+                <p className="text-xs text-white/50">Catches</p>
+                <p className="mt-1 text-xl font-bold">
+                  {catches.length}
+                </p>
+                <p className="text-xs text-white/50">So far</p>
+              </div>
+            </div>
+          </div>
 
-            <input
-              type="number"
-              value={length}
-              onChange={(e) => setLength(e.target.value)}
-              placeholder="24"
-              style={inputStyle}
-            />
-
-            <label>Weight (optional)</label>
-
-            <input
-              type="number"
-              value={weight}
-              onChange={(e) => setWeight(e.target.value)}
-              placeholder="5.2"
-              style={inputStyle}
-            />
-
-            <label>Lake</label>
-
-            <input
-              value={lake}
-              onChange={(e) => setLake(e.target.value)}
-              placeholder="White Iron Lake"
-              style={inputStyle}
-            />
-
-            <label>Caption</label>
-
-            <textarea
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
-              placeholder="Tell the family about the catch..."
-              rows={4}
-              style={{
-                ...inputStyle,
-                resize: "vertical",
-              }}
-            />
-
-            <label>Photo</label>
-
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) =>
-                setPhoto(e.target.files?.[0] || null)
-              }
-              style={{
-                width: "100%",
-                marginTop: 8,
-                marginBottom: 18,
-              }}
-            />
-
-            <button
-              onClick={postCatch}
-              disabled={posting}
-              style={{
-                width: "100%",
-                padding: 15,
-                border: "none",
-                borderRadius: 13,
-                background: posting
-                  ? "#8aa895"
-                  : "#2d7a4b",
-                color: "white",
-                fontSize: 16,
-                fontWeight: "bold",
-                cursor: posting
-                  ? "default"
-                  : "pointer",
-              }}
-            >
-              {posting ? "Posting..." : "Post Catch"}
-            </button>
-          </section>
-        )}
-
-        {/* RECENT CATCHES */}
-
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 12,
-          }}
-        >
-          <h2
-            style={{
-              margin: 0,
-              fontSize: 22,
-            }}
+          {/* Post button */}
+          <button
+            onClick={() => setShowPost(true)}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-400 py-4 font-bold text-[#071d18] shadow-lg shadow-emerald-900/30 transition hover:bg-emerald-300 active:scale-[0.98]"
           >
-            Recent Catches
-          </h2>
+            <Plus size={21} />
+            Post a Catch
+          </button>
+        </div>
+      </section>
 
-          <span
-            style={{
-              color: "#718078",
-              fontSize: 13,
-            }}
-          >
-            Trip Feed
-          </span>
+      {/* CATCH FEED */}
+      <section className="px-5 pt-3">
+        <div className="mb-4 flex items-end justify-between">
+          <div>
+            <p className="text-xs font-bold tracking-widest text-emerald-400 uppercase">
+              The catch board
+            </p>
+            <h2 className="mt-1 text-2xl font-black">
+              Recent Catches
+            </h2>
+          </div>
+
+          <Fish className="text-white/20" size={28} />
         </div>
 
         {loading ? (
-          <p>Loading catches...</p>
-        ) : catches.length === 0 ? (
-          <section
-            style={{
-              background: "white",
-              borderRadius: 18,
-              padding: 25,
-              textAlign: "center",
-              color: "#718078",
-            }}
-          >
-            No catches posted yet.
-          </section>
-        ) : (
-          catches.map((item) => (
-            <CatchPost
-              key={item.id}
-              item={item}
-            />
-          ))
-        )}
-
-        {/* STATS */}
-
-        <section
-          style={{
-            background: "#173f2a",
-            color: "white",
-            borderRadius: 20,
-            padding: 20,
-            marginTop: 22,
-          }}
-        >
-          <h2 style={{ marginTop: 0 }}>
-            🏆 Trip Stats
-          </h2>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 12,
-            }}
-          >
-            <Stat
-              number={String(catches.length)}
-              label="Catches"
-            />
-
-            <Stat
-              number={String(
-                new Set(
-                  catches.map((c) => c.fish_species)
-                ).size
-              )}
-              label="Species"
-            />
-
-            <Stat
-              number={
-                catches.length
-                  ? `${Math.max(
-                      ...catches.map((c) => c.length)
-                    )} in`
-                  : "0 in"
-              }
-              label="Biggest Fish"
-            />
-
-            <Stat
-              number="12"
-              label="Family Members"
-            />
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-white/50">
+            Loading catches...
           </div>
-        </section>
-      </div>
+        ) : catches.length === 0 ? (
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center">
+            <Fish className="mx-auto text-emerald-400" size={35} />
+            <p className="mt-3 font-bold">No catches yet</p>
+            <p className="mt-1 text-sm text-white/50">
+              Be the first one to post a fish!
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {catches.map((item) => (
+              <article
+                key={item.id}
+                className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.06] shadow-xl"
+              >
+                {item.photo_path && (
+                  <img
+                    src={item.photo_path}
+                    alt={item.species}
+                    className="h-64 w-full object-cover"
+                  />
+                )}
 
-      {/* BOTTOM NAV */}
+                <div className="p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium text-emerald-300">
+                        {item.name}
+                      </p>
 
-      <nav
-        style={{
-          position: "fixed",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          background: "white",
-          borderTop: "1px solid #dce3de",
-          padding: "10px 5px",
-          zIndex: 20,
-        }}
-      >
-        <div
-          style={{
-            maxWidth: 650,
-            margin: "0 auto",
-            display: "flex",
-            justifyContent: "space-around",
-          }}
-        >
-          <NavItem
-            icon={<Camera size={21} />}
-            text="Feed"
-            active
-          />
+                      <h3 className="mt-1 text-2xl font-black">
+                        {item.species}
+                      </h3>
+                    </div>
 
-          <NavItem
-            icon={<Fish size={21} />}
-            text="Fishing"
-          />
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-400/10">
+                      <Fish
+                        size={22}
+                        className="text-emerald-300"
+                      />
+                    </div>
+                  </div>
 
-          <NavItem
-            icon={<Trophy size={21} />}
-            text="Leaders"
-          />
+                  {(item.weight || item.length) && (
+                    <div className="mt-4 flex gap-2">
+                      {item.weight && (
+                        <div className="rounded-xl bg-black/20 px-3 py-2">
+                          <p className="text-xs text-white/40">
+                            Weight
+                          </p>
+                          <p className="font-bold">
+                            {item.weight} lbs
+                          </p>
+                        </div>
+                      )}
 
-          <NavItem
-            icon={<MapPin size={21} />}
-            text="Trip"
-          />
+                      {item.length && (
+                        <div className="rounded-xl bg-black/20 px-3 py-2">
+                          <p className="text-xs text-white/40">
+                            Length
+                          </p>
+                          <p className="font-bold">
+                            {item.length} in
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-          <NavItem
-            icon={<Users size={21} />}
-            text="Family"
-          />
-        </div>
-      </nav>
-    </main>
-  );
-}
+                  {item.notes && (
+                    <p className="mt-4 text-sm leading-6 text-white/60">
+                      {item.notes}
+                    </p>
+                  )}
 
-/* INPUT STYLE */
+                  <div className="mt-5 flex items-center gap-5 border-t border-white/10 pt-4 text-white/40">
+                    <button className="flex items-center gap-2 text-sm">
+                      <Heart size={18} />
+                      Like
+                    </button>
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: 12,
-  marginTop: 6,
-  marginBottom: 15,
-  border: "1px solid #d5ddd8",
-  borderRadius: 10,
-  fontSize: 15,
-  fontFamily: "inherit",
-};
+                    <button className="flex items-center gap-2 text-sm">
+                      <MessageCircle size={18} />
+                      Comment
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
 
-/* CATCH POST */
+      {/* STATS */}
+      <section className="px-5 pt-8">
+        <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-[#123f34] to-[#0b2922] p-5">
+          <div className="flex items-center gap-3">
+            <Trophy className="text-yellow-300" size={25} />
+            <h2 className="text-xl font-black">Trip Stats</h2>
+          </div>
 
-function CatchPost({
-  item,
-}: {
-  item: Catch;
-}) {
-  return (
-    <article
-      style={{
-        background: "white",
-        borderRadius: 20,
-        marginBottom: 18,
-        overflow: "hidden",
-        boxShadow: "0 3px 12px rgba(0,0,0,0.07)",
-      }}
-    >
-      {item.image_url ? (
-        <img
-          src={item.image_url}
-          alt={`${item.fish_species} caught by ${item.name}`}
-          style={{
-            width: "100%",
-            height: 280,
-            objectFit: "cover",
-            display: "block",
-          }}
-        />
-      ) : (
-        <div
-          style={{
-            height: 220,
-            background:
-              "linear-gradient(135deg, #86b79b, #2d6845)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 75,
-          }}
-        >
-          🐟
-        </div>
-      )}
+          <div className="mt-5 grid grid-cols-3 gap-2">
+            <div className="rounded-2xl bg-black/20 p-4 text-center">
+              <p className="text-2xl font-black">{catches.length}</p>
+              <p className="mt-1 text-xs text-white/50">
+                Catches
+              </p>
+            </div>
 
-      <div style={{ padding: 18 }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 10,
-          }}
-        >
-          <div>
-            <strong style={{ fontSize: 18 }}>
-              {item.name}
-            </strong>
+            <div className="rounded-2xl bg-black/20 p-4 text-center">
+              <p className="text-2xl font-black">
+                {new Set(catches.map((c) => c.name)).size}
+              </p>
+              <p className="mt-1 text-xs text-white/50">
+                Fishermen
+              </p>
+            </div>
 
-            <div
-              style={{
-                fontSize: 12,
-                color: "#78837c",
-                marginTop: 4,
-              }}
-            >
-              {new Date(
-                item.created_at
-              ).toLocaleDateString()}{" "}
-              • {item.lake}
+            <div className="rounded-2xl bg-black/20 p-4 text-center">
+              <p className="text-2xl font-black">🏆</p>
+              <p className="mt-1 text-xs text-white/50">
+                Leaderboard
+              </p>
             </div>
           </div>
+        </div>
+      </section>
 
-          <div
-            style={{
-              background: "#e7f1ea",
-              color: "#27623d",
-              padding: "7px 10px",
-              borderRadius: 10,
-              fontSize: 12,
-              fontWeight: "bold",
-              height: "fit-content",
-            }}
-          >
-            {item.fish_species}
+      {/* BOTTOM NAV */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#071d18]/95 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-md justify-around px-3 py-3">
+          <button className="flex flex-col items-center gap-1 text-emerald-300">
+            <Fish size={21} />
+            <span className="text-[10px] font-bold">Feed</span>
+          </button>
+
+          <button className="flex flex-col items-center gap-1 text-white/40">
+            <MapPin size={21} />
+            <span className="text-[10px] font-bold">Fishing</span>
+          </button>
+
+          <button className="flex flex-col items-center gap-1 text-white/40">
+            <Trophy size={21} />
+            <span className="text-[10px] font-bold">Leaders</span>
+          </button>
+
+          <button className="flex flex-col items-center gap-1 text-white/40">
+            <Users size={21} />
+            <span className="text-[10px] font-bold">Family</span>
+          </button>
+        </div>
+      </nav>
+
+      {/* POST MODAL */}
+      {showPost && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-t-[2rem] border border-white/10 bg-[#0b2922] p-6 shadow-2xl">
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold tracking-widest text-emerald-400 uppercase">
+                  New catch
+                </p>
+                <h2 className="mt-1 text-2xl font-black">
+                  Post Your Fish
+                </h2>
+              </div>
+
+              <button
+                onClick={() => setShowPost(false)}
+                className="rounded-full bg-white/10 p-2"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your name"
+                className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/30"
+              />
+
+              <input
+                value={species}
+                onChange={(e) => setSpecies(e.target.value)}
+                placeholder="Fish species"
+                className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/30"
+              />
+
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  value={weight}
+                  onChange={(e) => setWeight(e.target.value)}
+                  placeholder="Weight (lbs)"
+                  type="number"
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/30"
+                />
+
+                <input
+                  value={length}
+                  onChange={(e) => setLength(e.target.value)}
+                  placeholder="Length (in)"
+                  type="number"
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/30"
+                />
+              </div>
+
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Tell the family about the catch..."
+                rows={3}
+                className="w-full resize-none rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/30"
+              />
+
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-emerald-400/30 bg-emerald-400/5 px-4 py-4 text-sm text-emerald-300">
+                <Camera size={20} />
+                {photo ? photo.name : "Add a photo"}
+
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) =>
+                    setPhoto(e.target.files?.[0] || null)
+                  }
+                />
+              </label>
+
+              <button
+                onClick={postCatch}
+                disabled={posting}
+                className="w-full rounded-xl bg-emerald-400 py-4 font-black text-[#071d18] disabled:opacity-50"
+              >
+                {posting ? "Posting..." : "Post Catch"}
+              </button>
+            </div>
           </div>
         </div>
-
-        <div
-          style={{
-            marginTop: 15,
-            fontSize: 15,
-          }}
-        >
-          <strong>{item.length} in</strong>
-
-          {item.weight && (
-            <> • {item.weight} lb</>
-          )}
-        </div>
-
-        {item.caption && (
-          <p
-            style={{
-              lineHeight: 1.5,
-              marginBottom: 12,
-            }}
-          >
-            {item.caption}
-          </p>
-        )}
-
-        <div
-          style={{
-            borderTop: "1px solid #edf0ed",
-            paddingTop: 12,
-            display: "flex",
-            gap: 22,
-            color: "#68736c",
-          }}
-        >
-          <span>
-            <Heart size={18} /> Like
-          </span>
-
-          <span>
-            <MessageCircle size={18} /> Comment
-          </span>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-/* STAT */
-
-function Stat({
-  number,
-  label,
-}: {
-  number: string;
-  label: string;
-}) {
-  return (
-    <div
-      style={{
-        background: "rgba(255,255,255,0.1)",
-        borderRadius: 13,
-        padding: 14,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 22,
-          fontWeight: "bold",
-        }}
-      >
-        {number}
-      </div>
-
-      <div
-        style={{
-          fontSize: 12,
-          opacity: 0.75,
-        }}
-      >
-        {label}
-      </div>
-    </div>
-  );
-}
-
-/* NAV */
-
-function NavItem({
-  icon,
-  text,
-  active,
-}: {
-  icon: React.ReactNode;
-  text: string;
-  active?: boolean;
-}) {
-  return (
-    <div
-      style={{
-        textAlign: "center",
-        color: active
-          ? "#2d7a4b"
-          : "#7b857e",
-        fontSize: 11,
-        fontWeight: active
-          ? "bold"
-          : "normal",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          marginBottom: 3,
-        }}
-      >
-        {icon}
-      </div>
-
-      {text}
-    </div>
+      )}
+    </main>
   );
 }
