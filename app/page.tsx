@@ -42,10 +42,6 @@ export default function Home() {
   const [showPost, setShowPost] = useState(false);
   const [posting, setPosting] = useState(false);
 
-  const [accessGranted, setAccessGranted] = useState(false);
-  const [familyCode, setFamilyCode] = useState("");
-  const [codeError, setCodeError] = useState("");
-
   const [name, setName] = useState("");
   const [fishSpecies, setFishSpecies] = useState("");
   const [length, setLength] = useState("");
@@ -70,41 +66,12 @@ export default function Home() {
   }
 
   useEffect(() => {
-    const hasAccess =
-      localStorage.getItem("ely-fishing-family-access") === "granted";
-
-    if (hasAccess) {
-      setAccessGranted(true);
-    } else {
-      setLoading(false);
-    }
+    loadCatches();
   }, []);
-
-  useEffect(() => {
-    if (accessGranted) {
-      loadCatches();
-    }
-  }, [accessGranted]);
-
-  function unlockSite() {
-    if (familyCode.trim() === "Nofireplease123") {
-      localStorage.setItem(
-        "ely-fishing-family-access",
-        "granted"
-      );
-
-      setAccessGranted(true);
-      setCodeError("");
-    } else {
-      setCodeError("That family code is incorrect.");
-    }
-  }
 
   async function postCatch() {
     if (!name || !fishSpecies || !length || !lake) {
-      alert(
-        "Please enter your name, fish species, length, and lake."
-      );
+      alert("Please enter your name, fish species, length, and lake.");
       return;
     }
 
@@ -114,8 +81,7 @@ export default function Home() {
       let imageUrl: string | null = null;
 
       if (photo) {
-        const extension =
-          photo.name.split(".").pop() || "jpg";
+        const extension = photo.name.split(".").pop() || "jpg";
 
         const fileName = `${Date.now()}-${Math.random()
           .toString(36)
@@ -123,39 +89,31 @@ export default function Home() {
 
         const filePath = `private/${fileName}`;
 
-        const { error: uploadError } =
-          await supabase.storage
-            .from("catch-photos")
-            .upload(filePath, photo);
+        const { error: uploadError } = await supabase.storage
+          .from("catch-photos")
+          .upload(filePath, photo);
 
         if (uploadError) throw uploadError;
 
-        const {
-          data: signedData,
-          error: signedError,
-        } = await supabase.storage
-          .from("catch-photos")
-          .createSignedUrl(
-            filePath,
-            60 * 60 * 24 * 365
-          );
+        const { data: signedData, error: signedError } =
+          await supabase.storage
+            .from("catch-photos")
+            .createSignedUrl(filePath, 60 * 60 * 24 * 365);
 
         if (signedError) throw signedError;
 
         imageUrl = signedData.signedUrl;
       }
 
-      const { error } = await supabase
-        .from("catches")
-        .insert({
-          name,
-          fish_species: fishSpecies,
-          length: Number(length),
-          weight: weight ? Number(weight) : null,
-          lake,
-          caption: caption || null,
-          image_url: imageUrl,
-        });
+      const { error } = await supabase.from("catches").insert({
+        name,
+        fish_species: fishSpecies,
+        length: Number(length),
+        weight: weight ? Number(weight) : null,
+        lake,
+        caption: caption || null,
+        image_url: imageUrl,
+      });
 
       if (error) throw error;
 
@@ -178,59 +136,6 @@ export default function Home() {
     setPosting(false);
   }
 
-  if (!accessGranted) {
-    return (
-      <main style={styles.accessPage}>
-        <div style={styles.accessCard}>
-          <div style={styles.accessIcon}>
-            <Fish size={32} />
-          </div>
-
-          <div style={styles.eyebrow}>
-            ELY FISHING
-          </div>
-
-          <h1 style={styles.accessTitle}>
-            Family Access
-          </h1>
-
-          <p style={styles.accessText}>
-            This fishing board is for the family.
-          </p>
-
-          <input
-            type="password"
-            value={familyCode}
-            onChange={(e) => {
-              setFamilyCode(e.target.value);
-              setCodeError("");
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                unlockSite();
-              }
-            }}
-            placeholder="Enter family code"
-            style={styles.accessInput}
-          />
-
-          {codeError && (
-            <p style={styles.accessError}>
-              {codeError}
-            </p>
-          )}
-
-          <button
-            onClick={unlockSite}
-            style={styles.accessButton}
-          >
-            Enter Family Site
-          </button>
-        </div>
-      </main>
-    );
-  }
-
   return (
     <main style={styles.page}>
       {/* ================= HERO ================= */}
@@ -246,17 +151,20 @@ export default function Home() {
                 FAMILY FISHING TRIP
               </div>
 
-              <h1 style={styles.title}>
-                Ely Fishing
-              </h1>
+              <h1 style={styles.title}>Ely Fishing</h1>
 
               <p style={styles.subtitle}>
                 White Iron Lake • Minnesota
               </p>
             </div>
 
+            {/* LOON LOGO */}
             <div style={styles.fishLogo}>
-              <Fish size={26} />
+              <img
+                src="/loon-logo.png.png"
+                alt="Ely Fishing loon logo"
+                style={styles.logoImage}
+              />
             </div>
           </div>
 
@@ -436,11 +344,9 @@ export default function Home() {
 
             <div>
               <strong>
-                {
-                  new Set(
-                    catches.map((c) => c.name)
-                  ).size
-                }
+                {new Set(
+                  catches.map((c) => c.name)
+                ).size}
               </strong>
 
               <span>FISHERMEN</span>
@@ -496,9 +402,7 @@ export default function Home() {
               </div>
 
               <button
-                onClick={() =>
-                  setShowPost(false)
-                }
+                onClick={() => setShowPost(false)}
                 style={styles.closeButton}
               >
                 <X size={21} />
@@ -613,92 +517,6 @@ const styles: Record<
   string,
   React.CSSProperties
 > = {
-  accessPage: {
-    minHeight: "100vh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "24px",
-    boxSizing: "border-box",
-    background:
-      "linear-gradient(135deg, #050B10 0%, #071827 55%, #12344A 100%)",
-    color: colors.loonWhite,
-    fontFamily:
-      "Arial, Helvetica, sans-serif",
-  },
-
-  accessCard: {
-    width: "100%",
-    maxWidth: "420px",
-    padding: "32px 24px",
-    borderRadius: "24px",
-    textAlign: "center",
-    background:
-      "rgba(7,24,39,0.92)",
-    border:
-      "1px solid rgba(255,255,255,0.13)",
-    boxShadow:
-      "0 20px 60px rgba(0,0,0,0.35)",
-    backdropFilter: "blur(16px)",
-  },
-
-  accessIcon: {
-    width: "64px",
-    height: "64px",
-    margin: "0 auto 18px",
-    borderRadius: "50%",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: colors.sunYellow,
-    color: colors.deepNavy,
-  },
-
-  accessTitle: {
-    margin: "8px 0",
-    fontSize: "32px",
-    fontWeight: 900,
-  },
-
-  accessText: {
-    margin: "0 0 22px",
-    color:
-      "rgba(255,255,255,0.65)",
-    fontSize: "14px",
-  },
-
-  accessInput: {
-    boxSizing: "border-box",
-    width: "100%",
-    padding: "15px",
-    borderRadius: "13px",
-    border:
-      "1px solid rgba(255,255,255,0.12)",
-    background: colors.deepNavy,
-    color: colors.loonWhite,
-    fontSize: "16px",
-    outline: "none",
-    marginBottom: "10px",
-  },
-
-  accessError: {
-    margin: "0 0 10px",
-    color: "#FF8A80",
-    fontSize: "13px",
-  },
-
-  accessButton: {
-    width: "100%",
-    padding: "15px",
-    border: "none",
-    borderRadius: "13px",
-    background: colors.sunsetOrange,
-    color: colors.loonWhite,
-    fontSize: "15px",
-    fontWeight: 900,
-    cursor: "pointer",
-  },
-
   page: {
     minHeight: "100vh",
     background: colors.deepNavy,
@@ -761,13 +579,13 @@ const styles: Record<
   subtitle: {
     margin: "11px 0 0",
     fontSize: "15px",
-    color:
-      "rgba(255,255,255,0.75)",
+    color: "rgba(255,255,255,0.75)",
   },
 
+  /* BIGGER LOON LOGO */
   fishLogo: {
-    width: "52px",
-    height: "52px",
+    width: "72px",
+    height: "72px",
     borderRadius: "50%",
     display: "flex",
     justifyContent: "center",
@@ -778,6 +596,13 @@ const styles: Record<
       "1px solid rgba(255,255,255,0.2)",
     color: colors.sunYellow,
     backdropFilter: "blur(10px)",
+  },
+
+  logoImage: {
+    width: "64px",
+    height: "64px",
+    objectFit: "contain",
+    display: "block",
   },
 
   locationCard: {
@@ -1101,8 +926,7 @@ const styles: Record<
 
   twoInputs: {
     display: "grid",
-    gridTemplateColumns:
-      "1fr 1fr",
+    gridTemplateColumns: "1fr 1fr",
     gap: "10px",
   },
 
