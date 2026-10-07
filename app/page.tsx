@@ -11,6 +11,7 @@ import {
   MessageCircle,
   X,
   Plus,
+  Waves,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 
@@ -32,20 +33,22 @@ const colors = {
   lakeBlue: "#1E78B7",
   sunsetOrange: "#FF7043",
   sunYellow: "#FFC83D",
-  dockBrown: "#8B5A2B",
   loonWhite: "#F5F7F7",
 };
+
+const FAMILY_CODE = "Nofireplease123";
+const ACCESS_KEY = "ely-fishing-family-access";
 
 export default function Home() {
   const [catches, setCatches] = useState<Catch[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showPost, setShowPost] = useState(false);
-  const [posting, setPosting] = useState(false);
 
-  // FAMILY ACCESS
   const [accessGranted, setAccessGranted] = useState(false);
   const [familyCode, setFamilyCode] = useState("");
   const [codeError, setCodeError] = useState("");
+
+  const [showPost, setShowPost] = useState(false);
+  const [posting, setPosting] = useState(false);
 
   const [name, setName] = useState("");
   const [fishSpecies, setFishSpecies] = useState("");
@@ -57,7 +60,7 @@ export default function Home() {
 
   useEffect(() => {
     const hasAccess =
-      localStorage.getItem("ely-fishing-family-access") === "granted";
+      localStorage.getItem(ACCESS_KEY) === "granted";
 
     if (hasAccess) {
       setAccessGranted(true);
@@ -71,20 +74,6 @@ export default function Home() {
       loadCatches();
     }
   }, [accessGranted]);
-
-  function unlockSite() {
-    if (familyCode.trim() === "Nofireplease123") {
-      localStorage.setItem(
-        "ely-fishing-family-access",
-        "granted"
-      );
-
-      setAccessGranted(true);
-      setCodeError("");
-    } else {
-      setCodeError("That family code is incorrect.");
-    }
-  }
 
   async function loadCatches() {
     setLoading(true);
@@ -101,8 +90,29 @@ export default function Home() {
     setLoading(false);
   }
 
+  function unlockSite() {
+    if (familyCode.trim() === FAMILY_CODE) {
+      localStorage.setItem(
+        ACCESS_KEY,
+        "granted"
+      );
+
+      setAccessGranted(true);
+      setCodeError("");
+    } else {
+      setCodeError(
+        "That family code is incorrect."
+      );
+    }
+  }
+
   async function postCatch() {
-    if (!name || !fishSpecies || !length || !lake) {
+    if (
+      !name ||
+      !fishSpecies ||
+      !length ||
+      !lake
+    ) {
       alert(
         "Please enter your name, fish species, length, and lake."
       );
@@ -129,7 +139,9 @@ export default function Home() {
             .from("catch-photos")
             .upload(filePath, photo);
 
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+          throw uploadError;
+        }
 
         const {
           data: signedData,
@@ -141,24 +153,33 @@ export default function Home() {
             60 * 60 * 24 * 365
           );
 
-        if (signedError) throw signedError;
+        if (signedError) {
+          throw signedError;
+        }
 
-        imageUrl = signedData.signedUrl;
+        imageUrl =
+          signedData.signedUrl;
       }
 
-      const { error } = await supabase
-        .from("catches")
-        .insert({
-          name,
-          fish_species: fishSpecies,
-          length: Number(length),
-          weight: weight ? Number(weight) : null,
-          lake,
-          caption: caption || null,
-          image_url: imageUrl,
-        });
+      const { error } =
+        await supabase
+          .from("catches")
+          .insert({
+            name,
+            fish_species: fishSpecies,
+            length: Number(length),
+            weight: weight
+              ? Number(weight)
+              : null,
+            lake,
+            caption:
+              caption || null,
+            image_url: imageUrl,
+          });
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       setName("");
       setFishSpecies("");
@@ -167,29 +188,36 @@ export default function Home() {
       setLake("White Iron Lake");
       setCaption("");
       setPhoto(null);
-
       setShowPost(false);
 
       await loadCatches();
     } catch (error) {
       console.error(error);
-      alert("Something went wrong posting the catch.");
+      alert(
+        "Something went wrong posting the catch."
+      );
     }
 
     setPosting(false);
   }
 
-  // ================= FAMILY LOGIN =================
+  /* =========================
+     FAMILY LOGIN
+  ========================= */
 
   if (!accessGranted) {
     return (
       <main style={styles.accessPage}>
         <div style={styles.accessCard}>
-          <div style={styles.accessIcon}>
-            <Fish size={32} />
+          <div style={styles.accessLogoWrap}>
+            <img
+              src="/loon-logo.png.png"
+              alt="Ely Fishing loon logo"
+              style={styles.accessLogo}
+            />
           </div>
 
-          <div style={styles.eyebrow}>
+          <div style={styles.accessEyebrow}>
             ELY FISHING
           </div>
 
@@ -236,46 +264,59 @@ export default function Home() {
 
   return (
     <main style={styles.page}>
-      {/* ================= HERO ================= */}
+
+      {/* =========================
+          HERO
+      ========================= */}
 
       <section style={styles.hero}>
         <div style={styles.heroImage} />
         <div style={styles.heroDark} />
 
         <div style={styles.heroContent}>
-          <div style={styles.topRow}>
-            <div>
-              <div style={styles.eyebrow}>
-                FAMILY FISHING TRIP
-              </div>
 
-              <h1 style={styles.title}>
-                Ely Fishing
-              </h1>
+          {/* BIG CENTERED LOGO */}
 
-              <p style={styles.subtitle}>
-                White Iron Lake • Minnesota
-              </p>
-            </div>
+          <div style={styles.centerLogoArea}>
+            <div style={styles.logoGlow} />
 
-            {/* LOON LOGO */}
-            <div style={styles.fishLogo}>
-              <img
-                src="/loon-logo.png.png"
-                alt="Ely Fishing loon logo"
-                style={styles.logoImage}
-              />
-            </div>
+            <img
+              src="/loon-logo.png.png"
+              alt="Ely Fishing loon logo"
+              style={styles.heroLogo}
+            />
+          </div>
+
+          <div style={styles.heroEyebrow}>
+            FAMILY FISHING TRIP
+          </div>
+
+          <h1 style={styles.title}>
+            Ely Fishing
+          </h1>
+
+          <p style={styles.subtitle}>
+            White Iron Lake • Ely, Minnesota
+          </p>
+
+          <div style={styles.heroDivider}>
+            <span />
+            <Waves size={18} />
+            <span />
           </div>
 
           {/* LOCATION */}
 
           <div style={styles.locationCard}>
             <div style={styles.locationIcon}>
-              <MapPin size={24} />
+              <MapPin size={25} />
             </div>
 
-            <div>
+            <div style={styles.locationText}>
+              <div style={styles.locationLabel}>
+                FISHING SPOT
+              </div>
+
               <div style={styles.locationTitle}>
                 White Iron Lake
               </div>
@@ -289,18 +330,24 @@ export default function Home() {
           {/* POST BUTTON */}
 
           <button
-            onClick={() => setShowPost(true)}
+            onClick={() =>
+              setShowPost(true)
+            }
             style={styles.postButton}
           >
             <Plus size={23} />
             Post a Catch
           </button>
+
         </div>
       </section>
 
-      {/* ================= FEED ================= */}
+      {/* =========================
+          CATCH BOARD
+      ========================= */}
 
       <section style={styles.feed}>
+
         <div style={styles.sectionHeader}>
           <div>
             <div style={styles.sectionEyebrow}>
@@ -312,10 +359,9 @@ export default function Home() {
             </h2>
           </div>
 
-          <Fish
-            size={30}
-            color={colors.sunYellow}
-          />
+          <div style={styles.sectionFishIcon}>
+            <Fish size={25} />
+          </div>
         </div>
 
         {loading && (
@@ -324,20 +370,23 @@ export default function Home() {
           </div>
         )}
 
-        {!loading && catches.length === 0 && (
-          <div style={styles.emptyCard}>
-            <Fish
-              size={42}
-              color={colors.sunYellow}
-            />
+        {!loading &&
+          catches.length === 0 && (
+            <div style={styles.emptyCard}>
+              <Fish
+                size={42}
+                color={colors.sunYellow}
+              />
 
-            <h3>No catches yet</h3>
+              <h3>
+                No catches yet
+              </h3>
 
-            <p>
-              Be the first person to post a fish!
-            </p>
-          </div>
-        )}
+              <p>
+                Be the first person to post a fish!
+              </p>
+            </div>
+          )}
 
         {!loading &&
           catches.map((item) => (
@@ -345,6 +394,7 @@ export default function Home() {
               key={item.id}
               style={styles.catchCard}
             >
+
               {item.image_url && (
                 <img
                   src={item.image_url}
@@ -354,34 +404,58 @@ export default function Home() {
               )}
 
               <div style={styles.catchContent}>
+
                 <div style={styles.catchHeader}>
+
                   <div>
-                    <div style={styles.catchPerson}>
+                    <div
+                      style={
+                        styles.catchPerson
+                      }
+                    >
                       {item.name}
                     </div>
 
-                    <h3 style={styles.fishName}>
+                    <h3
+                      style={
+                        styles.fishName
+                      }
+                    >
                       {item.fish_species}
                     </h3>
                   </div>
 
                   <Fish
                     size={23}
-                    color={colors.sunYellow}
+                    color={
+                      colors.sunYellow
+                    }
                   />
                 </div>
 
-                <div style={styles.catchStats}>
+                <div
+                  style={
+                    styles.catchStats
+                  }
+                >
+
                   <div>
-                    <span>LENGTH</span>
+                    <span>
+                      LENGTH
+                    </span>
+
                     <strong>
                       {item.length}"
                     </strong>
                   </div>
 
-                  {item.weight !== null && (
+                  {item.weight !==
+                    null && (
                     <div>
-                      <span>WEIGHT</span>
+                      <span>
+                        WEIGHT
+                      </span>
+
                       <strong>
                         {item.weight} lbs
                       </strong>
@@ -389,116 +463,190 @@ export default function Home() {
                   )}
 
                   <div>
-                    <span>LAKE</span>
-                    <strong style={styles.lakeStat}>
+                    <span>
+                      LAKE
+                    </span>
+
+                    <strong
+                      style={
+                        styles.lakeStat
+                      }
+                    >
                       {item.lake}
                     </strong>
                   </div>
+
                 </div>
 
                 {item.caption && (
-                  <p style={styles.caption}>
+                  <p
+                    style={
+                      styles.caption
+                    }
+                  >
                     {item.caption}
                   </p>
                 )}
 
-                <div style={styles.social}>
+                <div
+                  style={
+                    styles.social
+                  }
+                >
+
                   <button
-                    style={styles.socialButton}
+                    style={
+                      styles.socialButton
+                    }
                   >
                     <Heart size={18} />
                     Like
                   </button>
 
                   <button
-                    style={styles.socialButton}
+                    style={
+                      styles.socialButton
+                    }
                   >
-                    <MessageCircle size={18} />
+                    <MessageCircle
+                      size={18}
+                    />
                     Comment
                   </button>
 
-                  <span style={styles.time}>
+                  <span
+                    style={styles.time}
+                  >
                     Just now
                   </span>
+
                 </div>
+
               </div>
             </article>
           ))}
 
-        {/* ================= TRIP STATS ================= */}
+        {/* =========================
+            TRIP STATS
+        ========================= */}
 
         <div style={styles.tripCard}>
+
           <div style={styles.tripHeader}>
             <Trophy
               size={25}
               color={colors.sunYellow}
             />
 
-            <h2>Trip Stats</h2>
+            <h2>
+              Trip Stats
+            </h2>
           </div>
 
           <div style={styles.tripStats}>
+
             <div>
               <strong>
                 {catches.length}
               </strong>
 
-              <span>CATCHES</span>
+              <span>
+                CATCHES
+              </span>
             </div>
 
             <div>
               <strong>
                 {
                   new Set(
-                    catches.map((c) => c.name)
+                    catches.map(
+                      (c) => c.name
+                    )
                   ).size
                 }
               </strong>
 
-              <span>FISHERMEN</span>
+              <span>
+                FISHERMEN
+              </span>
             </div>
 
             <div>
-              <strong>🏆</strong>
+              <strong>
+                🏆
+              </strong>
 
-              <span>LEADERBOARD</span>
+              <span>
+                LEADERBOARD
+              </span>
             </div>
+
           </div>
         </div>
+
       </section>
 
-      {/* ================= NAV ================= */}
+      {/* =========================
+          BOTTOM NAV
+      ========================= */}
 
       <nav style={styles.nav}>
-        <button style={styles.navActive}>
+
+        <button
+          style={styles.navActive}
+        >
           <Fish size={22} />
           Feed
         </button>
 
-        <button style={styles.navItem}>
+        <button
+          style={styles.navItem}
+        >
           <MapPin size={22} />
           Fishing
         </button>
 
-        <button style={styles.navItem}>
+        <button
+          style={styles.navItem}
+        >
           <Trophy size={22} />
           Leaders
         </button>
 
-        <button style={styles.navItem}>
+        <button
+          style={styles.navItem}
+        >
           <Users size={22} />
           Family
         </button>
+
       </nav>
 
-      {/* ================= POST MODAL ================= */}
+      {/* =========================
+          POST MODAL
+      ========================= */}
 
       {showPost && (
-        <div style={styles.modalBackground}>
+        <div
+          style={
+            styles.modalBackground
+          }
+        >
+
           <div style={styles.modal}>
-            <div style={styles.modalHeader}>
+
+            <div
+              style={
+                styles.modalHeader
+              }
+            >
+
               <div>
-                <div style={styles.sectionEyebrow}>
+                <div
+                  style={
+                    styles.sectionEyebrow
+                  }
+                >
                   NEW CATCH
                 </div>
 
@@ -511,17 +659,23 @@ export default function Home() {
                 onClick={() =>
                   setShowPost(false)
                 }
-                style={styles.closeButton}
+                style={
+                  styles.closeButton
+                }
               >
                 <X size={21} />
               </button>
+
             </div>
 
             <div style={styles.form}>
+
               <input
                 value={name}
                 onChange={(e) =>
-                  setName(e.target.value)
+                  setName(
+                    e.target.value
+                  )
                 }
                 placeholder="Your name"
                 style={styles.input}
@@ -530,17 +684,26 @@ export default function Home() {
               <input
                 value={fishSpecies}
                 onChange={(e) =>
-                  setFishSpecies(e.target.value)
+                  setFishSpecies(
+                    e.target.value
+                  )
                 }
                 placeholder="Fish species"
                 style={styles.input}
               />
 
-              <div style={styles.twoInputs}>
+              <div
+                style={
+                  styles.twoInputs
+                }
+              >
+
                 <input
                   value={length}
                   onChange={(e) =>
-                    setLength(e.target.value)
+                    setLength(
+                      e.target.value
+                    )
                   }
                   placeholder="Length (in)"
                   type="number"
@@ -550,18 +713,23 @@ export default function Home() {
                 <input
                   value={weight}
                   onChange={(e) =>
-                    setWeight(e.target.value)
+                    setWeight(
+                      e.target.value
+                    )
                   }
                   placeholder="Weight (lbs)"
                   type="number"
                   style={styles.input}
                 />
+
               </div>
 
               <input
                 value={lake}
                 onChange={(e) =>
-                  setLake(e.target.value)
+                  setLake(
+                    e.target.value
+                  )
                 }
                 placeholder="Lake"
                 style={styles.input}
@@ -570,7 +738,9 @@ export default function Home() {
               <textarea
                 value={caption}
                 onChange={(e) =>
-                  setCaption(e.target.value)
+                  setCaption(
+                    e.target.value
+                  )
                 }
                 placeholder="Tell the family about the catch..."
                 rows={3}
@@ -580,7 +750,11 @@ export default function Home() {
                 }}
               />
 
-              <label style={styles.photoButton}>
+              <label
+                style={
+                  styles.photoButton
+                }
+              >
                 <Camera size={20} />
 
                 {photo
@@ -590,7 +764,9 @@ export default function Home() {
                 <input
                   type="file"
                   accept="image/*"
-                  style={{ display: "none" }}
+                  style={{
+                    display: "none",
+                  }}
                   onChange={(e) =>
                     setPhoto(
                       e.target.files?.[0] ||
@@ -603,16 +779,21 @@ export default function Home() {
               <button
                 onClick={postCatch}
                 disabled={posting}
-                style={styles.submitButton}
+                style={
+                  styles.submitButton
+                }
               >
                 {posting
                   ? "Posting..."
                   : "Post Catch"}
               </button>
+
             </div>
           </div>
+
         </div>
       )}
+
     </main>
   );
 }
@@ -625,7 +806,10 @@ const styles: Record<
   string,
   React.CSSProperties
 > = {
-  /* ================= LOGIN ================= */
+
+  /* =========================
+     LOGIN
+  ========================= */
 
   accessPage: {
     minHeight: "100vh",
@@ -648,24 +832,44 @@ const styles: Record<
     borderRadius: "24px",
     textAlign: "center",
     background:
-      "rgba(7,24,39,0.92)",
+      "rgba(7,24,39,0.94)",
     border:
       "1px solid rgba(255,255,255,0.13)",
     boxShadow:
       "0 20px 60px rgba(0,0,0,0.35)",
-    backdropFilter: "blur(16px)",
+    backdropFilter:
+      "blur(16px)",
   },
 
-  accessIcon: {
-    width: "64px",
-    height: "64px",
+  accessLogoWrap: {
+    width: "110px",
+    height: "110px",
     margin: "0 auto 18px",
-    borderRadius: "50%",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    background: colors.sunYellow,
-    color: colors.deepNavy,
+    overflow: "hidden",
+    background: "transparent",
+  },
+
+  accessLogo: {
+    width: "105px",
+    height: "105px",
+    objectFit: "contain",
+    display: "block",
+
+    /*
+      Removes the black background
+      that is baked into the PNG.
+    */
+    mixBlendMode: "screen",
+  },
+
+  accessEyebrow: {
+    color: colors.sunYellow,
+    fontSize: "11px",
+    fontWeight: 900,
+    letterSpacing: "3px",
   },
 
   accessTitle: {
@@ -688,8 +892,10 @@ const styles: Record<
     borderRadius: "13px",
     border:
       "1px solid rgba(255,255,255,0.12)",
-    background: colors.deepNavy,
-    color: colors.loonWhite,
+    background:
+      colors.deepNavy,
+    color:
+      colors.loonWhite,
     fontSize: "16px",
     outline: "none",
     marginBottom: "10px",
@@ -706,27 +912,37 @@ const styles: Record<
     padding: "15px",
     border: "none",
     borderRadius: "13px",
-    background: colors.sunsetOrange,
-    color: colors.loonWhite,
+    background:
+      colors.sunsetOrange,
+    color:
+      colors.loonWhite,
     fontSize: "15px",
     fontWeight: 900,
     cursor: "pointer",
   },
 
-  /* ================= MAIN PAGE ================= */
+  /* =========================
+     MAIN PAGE
+  ========================= */
 
   page: {
     minHeight: "100vh",
-    background: colors.deepNavy,
-    color: colors.loonWhite,
+    background:
+      colors.deepNavy,
+    color:
+      colors.loonWhite,
     paddingBottom: "90px",
     fontFamily:
       "Arial, Helvetica, sans-serif",
   },
 
+  /* =========================
+     HERO
+  ========================= */
+
   hero: {
     position: "relative",
-    minHeight: "520px",
+    minHeight: "650px",
     overflow: "hidden",
   },
 
@@ -736,106 +952,164 @@ const styles: Record<
     backgroundImage:
       "url('/minnesota-sunset.jpg.png')",
     backgroundSize: "cover",
-    backgroundPosition: "center",
+    backgroundPosition:
+      "center",
   },
 
   heroDark: {
     position: "absolute",
     inset: 0,
     background:
-      "linear-gradient(to bottom, rgba(3,12,16,0.15) 0%, rgba(3,12,16,0.35) 40%, #06151a 100%)",
+      "linear-gradient(to bottom, rgba(3,12,16,0.08) 0%, rgba(3,12,16,0.18) 42%, rgba(3,12,16,0.82) 100%)",
   },
 
   heroContent: {
     position: "relative",
     maxWidth: "900px",
+    minHeight: "650px",
     margin: "0 auto",
-    padding: "45px 22px 35px",
-  },
-
-  topRow: {
+    padding: "34px 22px 45px",
+    boxSizing: "border-box",
     display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-
-  eyebrow: {
-    color: colors.sunYellow,
-    fontSize: "11px",
-    fontWeight: 900,
-    letterSpacing: "3px",
-  },
-
-  title: {
-    margin: "7px 0 0",
-    fontSize: "46px",
-    lineHeight: 1,
-    fontWeight: 900,
-    letterSpacing: "-2px",
-  },
-
-  subtitle: {
-    margin: "11px 0 0",
-    fontSize: "15px",
-    color:
-      "rgba(255,255,255,0.75)",
+    flexDirection: "column",
+    alignItems: "center",
+    textAlign: "center",
   },
 
   /*
-    LOON LOGO
-    No black circle/background around it.
-    The actual loon image is allowed to show by itself.
+    This is the new centered logo area.
   */
 
-  fishLogo: {
-    width: "72px",
-    height: "72px",
+  centerLogoArea: {
+    position: "relative",
+    width: "220px",
+    height: "220px",
     display: "flex",
-    justifyContent: "center",
     alignItems: "center",
-    background: "transparent",
-    border: "none",
-    boxShadow: "none",
-    backdropFilter: "none",
+    justifyContent: "center",
+    margin:
+      "0 auto 8px",
   },
 
-  logoImage: {
-    width: "68px",
-    height: "68px",
+  logoGlow: {
+    position: "absolute",
+    width: "190px",
+    height: "190px",
+    borderRadius: "50%",
+    background:
+      "radial-gradient(circle, rgba(255,200,61,0.25) 0%, rgba(255,112,67,0.12) 45%, transparent 72%)",
+    filter: "blur(4px)",
+  },
+
+  /*
+    BIG LOGO
+    The screen blend removes the black
+    square that is built into the PNG.
+  */
+
+  heroLogo: {
+    position: "relative",
+    width: "205px",
+    height: "205px",
     objectFit: "contain",
     display: "block",
-    background: "transparent",
+    mixBlendMode: "screen",
+    filter:
+      "drop-shadow(0 12px 24px rgba(0,0,0,0.35))",
   },
 
+  heroEyebrow: {
+    color:
+      colors.sunYellow,
+    fontSize: "12px",
+    fontWeight: 900,
+    letterSpacing: "4px",
+    marginTop: "2px",
+  },
+
+  title: {
+    margin: "8px 0 0",
+    fontSize: "58px",
+    lineHeight: 0.98,
+    fontWeight: 900,
+    letterSpacing: "-2.5px",
+    textShadow:
+      "0 5px 20px rgba(0,0,0,0.4)",
+  },
+
+  subtitle: {
+    margin: "12px 0 0",
+    fontSize: "16px",
+    color:
+      "rgba(255,255,255,0.82)",
+    fontWeight: 600,
+  },
+
+  heroDivider: {
+    width: "180px",
+    margin: "18px auto 0",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "10px",
+    color:
+      colors.sunYellow,
+  },
+
+  /* =========================
+     LOCATION CARD
+  ========================= */
+
   locationCard: {
-    marginTop: "70px",
+    width: "100%",
+    boxSizing: "border-box",
+    marginTop: "24px",
     display: "flex",
     alignItems: "center",
     gap: "14px",
-    padding: "17px",
+    padding:
+      "17px 19px",
     borderRadius: "20px",
     background:
-      "rgba(7,24,39,0.72)",
+      "rgba(7,24,39,0.78)",
     border:
       "1px solid rgba(255,255,255,0.18)",
-    backdropFilter: "blur(15px)",
+    backdropFilter:
+      "blur(15px)",
     boxShadow:
       "0 15px 40px rgba(0,0,0,0.3)",
+    textAlign: "left",
   },
 
   locationIcon: {
-    width: "48px",
-    height: "48px",
+    flexShrink: 0,
+    width: "50px",
+    height: "50px",
     borderRadius: "50%",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    background: colors.sunYellow,
-    color: colors.deepNavy,
+    background:
+      colors.sunYellow,
+    color:
+      colors.deepNavy,
+  },
+
+  locationText: {
+    minWidth: 0,
+  },
+
+  locationLabel: {
+    color:
+      colors.sunYellow,
+    fontSize: "9px",
+    fontWeight: 900,
+    letterSpacing: "2px",
+    marginBottom: "2px",
   },
 
   locationTitle: {
-    fontSize: "17px",
+    fontSize: "19px",
     fontWeight: 900,
   },
 
@@ -848,7 +1122,7 @@ const styles: Record<
 
   postButton: {
     width: "100%",
-    marginTop: "15px",
+    marginTop: "14px",
     padding: "17px",
     border: "none",
     borderRadius: "17px",
@@ -856,8 +1130,10 @@ const styles: Record<
     alignItems: "center",
     justifyContent: "center",
     gap: "10px",
-    background: colors.sunsetOrange,
-    color: colors.loonWhite,
+    background:
+      colors.sunsetOrange,
+    color:
+      colors.loonWhite,
     fontSize: "17px",
     fontWeight: 900,
     cursor: "pointer",
@@ -865,21 +1141,27 @@ const styles: Record<
       "0 10px 30px rgba(255,112,67,0.28)",
   },
 
+  /* =========================
+     FEED
+  ========================= */
+
   feed: {
     maxWidth: "900px",
     margin: "0 auto",
-    padding: "28px 22px",
+    padding: "36px 22px",
   },
 
   sectionHeader: {
     display: "flex",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
+    alignItems: "center",
+    justifyContent:
+      "space-between",
     marginBottom: "18px",
   },
 
   sectionEyebrow: {
-    color: colors.sunYellow,
+    color:
+      colors.sunYellow,
     fontSize: "10px",
     fontWeight: 900,
     letterSpacing: "3px",
@@ -891,6 +1173,19 @@ const styles: Record<
     fontWeight: 900,
   },
 
+  sectionFishIcon: {
+    width: "48px",
+    height: "48px",
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background:
+      "rgba(255,200,61,0.12)",
+    color:
+      colors.sunYellow,
+  },
+
   loadingCard: {
     padding: "35px",
     textAlign: "center",
@@ -899,7 +1194,8 @@ const styles: Record<
   },
 
   emptyCard: {
-    padding: "45px 20px",
+    padding:
+      "45px 20px",
     borderRadius: "22px",
     textAlign: "center",
     background:
@@ -918,7 +1214,8 @@ const styles: Record<
       "1px solid rgba(255,255,255,0.12)",
     boxShadow:
       "0 12px 35px rgba(0,0,0,0.25)",
-    backdropFilter: "blur(12px)",
+    backdropFilter:
+      "blur(12px)",
   },
 
   catchImage: {
@@ -934,11 +1231,13 @@ const styles: Record<
 
   catchHeader: {
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent:
+      "space-between",
   },
 
   catchPerson: {
-    color: colors.sunYellow,
+    color:
+      colors.sunYellow,
     fontSize: "13px",
     fontWeight: 800,
   },
@@ -964,11 +1263,13 @@ const styles: Record<
   lakeStat: {
     whiteSpace: "nowrap",
     overflow: "hidden",
-    textOverflow: "ellipsis",
+    textOverflow:
+      "ellipsis",
   },
 
   caption: {
-    margin: "15px 0 0",
+    margin:
+      "15px 0 0",
     color:
       "rgba(255,255,255,0.68)",
     lineHeight: 1.6,
@@ -987,7 +1288,8 @@ const styles: Record<
     alignItems: "center",
     gap: "7px",
     border: "none",
-    background: "transparent",
+    background:
+      "transparent",
     color:
       "rgba(255,255,255,0.5)",
     cursor: "pointer",
@@ -1000,6 +1302,10 @@ const styles: Record<
     fontSize: "12px",
   },
 
+  /* =========================
+     TRIP STATS
+  ========================= */
+
   tripCard: {
     marginTop: "30px",
     padding: "22px",
@@ -1008,7 +1314,8 @@ const styles: Record<
       "linear-gradient(145deg, rgba(30,120,183,0.20), rgba(5,11,16,0.92))",
     border:
       "1px solid rgba(255,255,255,0.13)",
-    backdropFilter: "blur(12px)",
+    backdropFilter:
+      "blur(12px)",
   },
 
   tripHeader: {
@@ -1025,6 +1332,10 @@ const styles: Record<
     textAlign: "center",
   },
 
+  /* =========================
+     BOTTOM NAV
+  ========================= */
+
   nav: {
     position: "fixed",
     zIndex: 80,
@@ -1033,38 +1344,51 @@ const styles: Record<
     right: 0,
     height: "74px",
     display: "flex",
-    justifyContent: "center",
+    justifyContent:
+      "center",
     alignItems: "center",
-    gap: "55px",
+    gap: "28px",
     background:
       "rgba(5,11,16,0.96)",
     borderTop:
       "1px solid rgba(255,255,255,0.12)",
-    backdropFilter: "blur(18px)",
+    backdropFilter:
+      "blur(18px)",
   },
 
   navActive: {
     border: "none",
-    background: "transparent",
-    color: colors.sunYellow,
+    background:
+      "transparent",
+    color:
+      colors.sunYellow,
     display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
+    flexDirection:
+      "column",
+    alignItems:
+      "center",
     gap: "4px",
     fontWeight: 800,
   },
 
   navItem: {
     border: "none",
-    background: "transparent",
+    background:
+      "transparent",
     color:
       "rgba(255,255,255,0.4)",
     display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
+    flexDirection:
+      "column",
+    alignItems:
+      "center",
     gap: "4px",
     fontWeight: 700,
   },
+
+  /* =========================
+     POST MODAL
+  ========================= */
 
   modalBackground: {
     position: "fixed",
@@ -1072,7 +1396,8 @@ const styles: Record<
     zIndex: 100,
     display: "flex",
     alignItems: "flex-end",
-    justifyContent: "center",
+    justifyContent:
+      "center",
     background:
       "rgba(0,0,0,0.75)",
   },
@@ -1082,18 +1407,22 @@ const styles: Record<
     maxWidth: "700px",
     maxHeight: "92vh",
     overflowY: "auto",
-    padding: "24px 20px 30px",
+    padding:
+      "24px 20px 30px",
     borderRadius:
       "25px 25px 0 0",
-    background: colors.navy,
+    background:
+      colors.navy,
     border:
       "1px solid rgba(255,255,255,0.13)",
   },
 
   modalHeader: {
     display: "flex",
-    justifyContent: "space-between",
-    marginBottom: "20px",
+    justifyContent:
+      "space-between",
+    marginBottom:
+      "20px",
   },
 
   closeButton: {
@@ -1108,7 +1437,8 @@ const styles: Record<
 
   form: {
     display: "flex",
-    flexDirection: "column",
+    flexDirection:
+      "column",
     gap: "11px",
   },
 
@@ -1119,8 +1449,10 @@ const styles: Record<
     borderRadius: "13px",
     border:
       "1px solid rgba(255,255,255,0.1)",
-    background: colors.deepNavy,
-    color: colors.loonWhite,
+    background:
+      colors.deepNavy,
+    color:
+      colors.loonWhite,
     fontSize: "15px",
     outline: "none",
   },
@@ -1136,12 +1468,14 @@ const styles: Record<
     minHeight: "52px",
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent:
+      "center",
     gap: "8px",
     borderRadius: "13px",
     border:
       "1px dashed rgba(255,112,67,0.55)",
-    color: colors.sunYellow,
+    color:
+      colors.sunYellow,
     cursor: "pointer",
   },
 
@@ -1149,8 +1483,10 @@ const styles: Record<
     padding: "15px",
     border: "none",
     borderRadius: "13px",
-    background: colors.sunsetOrange,
-    color: colors.loonWhite,
+    background:
+      colors.sunsetOrange,
+    color:
+      colors.loonWhite,
     fontSize: "15px",
     fontWeight: 900,
     cursor: "pointer",
