@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from "react";
 import {
-  Heart,
-  MessageCircle,
   Camera,
+  Fish,
   Trophy,
   MapPin,
   Users,
-  Fish,
+  Heart,
+  MessageCircle,
   X,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
@@ -67,8 +67,8 @@ export default function Home() {
     let imageUrl: string | null = null;
 
     if (photo) {
-      const fileExtension = photo.name.split(".").pop();
-      const fileName = `${crypto.randomUUID()}.${fileExtension}`;
+      const extension = photo.name.split(".").pop();
+      const fileName = `${crypto.randomUUID()}.${extension}`;
       const filePath = `private/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
@@ -128,68 +128,115 @@ export default function Home() {
     <main
       style={{
         minHeight: "100vh",
-        background: "#f4f7f5",
+        background: "#eef4ef",
         color: "#17231c",
         fontFamily: "Arial, sans-serif",
-        paddingBottom: "90px",
+        paddingBottom: 90,
       }}
     >
+      {/* HEADER */}
+
       <header
         style={{
           background: "#173f2a",
           color: "white",
-          padding: "22px 18px",
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
+          padding: "24px 18px",
         }}
       >
-        <div style={{ maxWidth: 650, margin: "0 auto" }}>
-          <div style={{ fontSize: 14, opacity: 0.8 }}>
+        <div
+          style={{
+            maxWidth: 650,
+            margin: "0 auto",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              letterSpacing: 2,
+              opacity: 0.75,
+            }}
+          >
             FAMILY FISHING TRIP
           </div>
 
-          <h1 style={{ margin: "4px 0", fontSize: 28 }}>
+          <h1
+            style={{
+              margin: "6px 0",
+              fontSize: 30,
+            }}
+          >
             🎣 Ely Fishing Trip
           </h1>
 
-          <div style={{ fontSize: 14, opacity: 0.85 }}>
+          <div
+            style={{
+              fontSize: 14,
+              opacity: 0.8,
+            }}
+          >
             Ely, Minnesota
           </div>
         </div>
       </header>
 
-      <div style={{ maxWidth: 650, margin: "0 auto", padding: "18px" }}>
+      <div
+        style={{
+          maxWidth: 650,
+          margin: "0 auto",
+          padding: 18,
+        }}
+      >
+        {/* WELCOME */}
+
         <section
           style={{
             background: "white",
-            borderRadius: 18,
-            padding: 20,
+            borderRadius: 20,
+            padding: 22,
             marginBottom: 18,
-            boxShadow: "0 3px 12px rgba(0,0,0,0.08)",
+            boxShadow: "0 4px 15px rgba(0,0,0,0.07)",
           }}
         >
-          <div style={{ fontSize: 38 }}>🌲🎣</div>
+          <div
+            style={{
+              fontSize: 42,
+              marginBottom: 8,
+            }}
+          >
+            🌲🎣
+          </div>
 
-          <h2 style={{ margin: "8px 0 5px", fontSize: 23 }}>
+          <h2
+            style={{
+              margin: "0 0 6px",
+              fontSize: 24,
+            }}
+          >
             Welcome to the trip!
           </h2>
 
-          <p style={{ margin: 0, color: "#647067", lineHeight: 1.5 }}>
-            Share your catches, photos, stories, and memories with the family.
+          <p
+            style={{
+              margin: 0,
+              color: "#68736c",
+              lineHeight: 1.5,
+            }}
+          >
+            Share your catches, photos, stories, and memories
+            with the family.
           </p>
 
           <button
             onClick={() => setShowForm(true)}
             style={{
-              marginTop: 16,
               width: "100%",
-              padding: "14px",
+              marginTop: 18,
+              padding: 16,
               border: "none",
-              borderRadius: 12,
+              borderRadius: 13,
               background: "#2d7a4b",
               color: "white",
-              fontSize: 16,
+              fontSize: 17,
               fontWeight: "bold",
               cursor: "pointer",
             }}
@@ -198,14 +245,16 @@ export default function Home() {
           </button>
         </section>
 
+        {/* POST FORM */}
+
         {showForm && (
           <section
             style={{
               background: "white",
-              borderRadius: 18,
+              borderRadius: 20,
               padding: 20,
-              marginBottom: 22,
-              boxShadow: "0 3px 12px rgba(0,0,0,0.08)",
+              marginBottom: 20,
+              boxShadow: "0 4px 15px rgba(0,0,0,0.07)",
             }}
           >
             <div
@@ -215,7 +264,9 @@ export default function Home() {
                 alignItems: "center",
               }}
             >
-              <h2 style={{ margin: 0 }}>📸 Post a Catch</h2>
+              <h2 style={{ margin: 0 }}>
+                📸 Post a Catch
+              </h2>
 
               <button
                 onClick={() => setShowForm(false)}
@@ -232,111 +283,106 @@ export default function Home() {
               </button>
             </div>
 
-            <div style={{ marginTop: 18 }}>
-              <label>Name</label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Who caught it?"
-                style={inputStyle}
-              />
+            <label>Name</label>
 
-              <label>Fish species</label>
-              <input
-                value={fishSpecies}
-                onChange={(e) => setFishSpecies(e.target.value)}
-                placeholder="Walleye, Northern Pike, Bass..."
-                style={inputStyle}
-              />
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Who caught it?"
+              style={inputStyle}
+            />
 
-              <label>Length (inches)</label>
-              <input
-                type="number"
-                value={length}
-                onChange={(e) => setLength(e.target.value)}
-                placeholder="24"
-                style={inputStyle}
-              />
+            <label>Fish species</label>
 
-              <label>Weight (optional)</label>
-              <input
-                type="number"
-                value={weight}
-                onChange={(e) => setWeight(e.target.value)}
-                placeholder="5.2"
-                style={inputStyle}
-              />
+            <input
+              value={fishSpecies}
+              onChange={(e) => setFishSpecies(e.target.value)}
+              placeholder="Walleye, Northern Pike, Bass..."
+              style={inputStyle}
+            />
 
-              <label>Lake</label>
-              <input
-                value={lake}
-                onChange={(e) => setLake(e.target.value)}
-                placeholder="White Iron Lake"
-                style={inputStyle}
-              />
+            <label>Length (inches)</label>
 
-              <label>Caption</label>
-              <textarea
-                value={caption}
-                onChange={(e) => setCaption(e.target.value)}
-                placeholder="Tell the family about the catch..."
-                rows={4}
-                style={{
-                  ...inputStyle,
-                  resize: "vertical",
-                }}
-              />
+            <input
+              type="number"
+              value={length}
+              onChange={(e) => setLength(e.target.value)}
+              placeholder="24"
+              style={inputStyle}
+            />
 
-              <label>Photo</label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) =>
-                  setPhoto(e.target.files?.[0] || null)
-                }
-                style={{
-                  width: "100%",
-                  marginTop: 8,
-                  marginBottom: 18,
-                }}
-              />
+            <label>Weight (optional)</label>
 
-              <button
-                onClick={postCatch}
-                disabled={posting}
-                style={{
-                  width: "100%",
-                  padding: "14px",
-                  border: "none",
-                  borderRadius: 12,
-                  background: posting ? "#8aa895" : "#2d7a4b",
-                  color: "white",
-                  fontSize: 16,
-                  fontWeight: "bold",
-                  cursor: posting ? "default" : "pointer",
-                }}
-              >
-                {posting ? "Posting..." : "Post Catch"}
-              </button>
-            </div>
+            <input
+              type="number"
+              value={weight}
+              onChange={(e) => setWeight(e.target.value)}
+              placeholder="5.2"
+              style={inputStyle}
+            />
+
+            <label>Lake</label>
+
+            <input
+              value={lake}
+              onChange={(e) => setLake(e.target.value)}
+              placeholder="White Iron Lake"
+              style={inputStyle}
+            />
+
+            <label>Caption</label>
+
+            <textarea
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+              placeholder="Tell the family about the catch..."
+              rows={4}
+              style={{
+                ...inputStyle,
+                resize: "vertical",
+              }}
+            />
+
+            <label>Photo</label>
+
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) =>
+                setPhoto(e.target.files?.[0] || null)
+              }
+              style={{
+                width: "100%",
+                marginTop: 8,
+                marginBottom: 18,
+              }}
+            />
+
+            <button
+              onClick={postCatch}
+              disabled={posting}
+              style={{
+                width: "100%",
+                padding: 15,
+                border: "none",
+                borderRadius: 13,
+                background: posting
+                  ? "#8aa895"
+                  : "#2d7a4b",
+                color: "white",
+                fontSize: 16,
+                fontWeight: "bold",
+                cursor: posting
+                  ? "default"
+                  : "pointer",
+              }}
+            >
+              {posting ? "Posting..." : "Post Catch"}
+            </button>
           </section>
         )}
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: 10,
-            marginBottom: 22,
-          }}
-        >
-          <QuickButton icon={<Fish size={23} />} text="Catches" />
-          <QuickButton
-            icon={<Trophy size={23} />}
-            text="Leaderboard"
-          />
-          <QuickButton icon={<Users size={23} />} text="Family" />
-        </div>
+        {/* RECENT CATCHES */}
 
         <div
           style={{
@@ -346,14 +392,27 @@ export default function Home() {
             marginBottom: 12,
           }}
         >
-          <h2 style={{ margin: 0, fontSize: 21 }}>Recent Catches</h2>
-          <span style={{ color: "#718078", fontSize: 13 }}>
+          <h2
+            style={{
+              margin: 0,
+              fontSize: 22,
+            }}
+          >
+            Recent Catches
+          </h2>
+
+          <span
+            style={{
+              color: "#718078",
+              fontSize: 13,
+            }}
+          >
             Trip Feed
           </span>
         </div>
 
         {loading ? (
-          <p style={{ color: "#718078" }}>Loading catches...</p>
+          <p>Loading catches...</p>
         ) : catches.length === 0 ? (
           <section
             style={{
@@ -362,47 +421,41 @@ export default function Home() {
               padding: 25,
               textAlign: "center",
               color: "#718078",
-              marginBottom: 20,
             }}
           >
-            No catches posted yet. Be the first!
+            No catches posted yet.
           </section>
         ) : (
           catches.map((item) => (
             <CatchPost
               key={item.id}
-              name={item.name}
-              time={new Date(item.created_at).toLocaleDateString()}
-              lake={item.lake}
-              fish={item.fish_species}
-              length={`${item.length} in`}
-              weight={item.weight}
-              imageUrl={item.image_url}
-              caption={item.caption || ""}
+              item={item}
             />
           ))
         )}
+
+        {/* STATS */}
 
         <section
           style={{
             background: "#173f2a",
             color: "white",
-            borderRadius: 18,
+            borderRadius: 20,
             padding: 20,
-            marginTop: 20,
+            marginTop: 22,
           }}
         >
-          <h2 style={{ marginTop: 0 }}>🏆 Trip Stats</h2>
+          <h2 style={{ marginTop: 0 }}>
+            🏆 Trip Stats
+          </h2>
 
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(2, 1fr)",
+              gridTemplateColumns: "1fr 1fr",
               gap: 12,
             }}
           >
-            <Stat number="12" label="Family Members" />
-
             <Stat
               number={String(catches.length)}
               label="Catches"
@@ -410,14 +463,16 @@ export default function Home() {
 
             <Stat
               number={String(
-                new Set(catches.map((c) => c.fish_species)).size
+                new Set(
+                  catches.map((c) => c.fish_species)
+                ).size
               )}
               label="Species"
             />
 
             <Stat
               number={
-                catches.length > 0
+                catches.length
                   ? `${Math.max(
                       ...catches.map((c) => c.length)
                     )} in`
@@ -425,9 +480,16 @@ export default function Home() {
               }
               label="Biggest Fish"
             />
+
+            <Stat
+              number="12"
+              label="Family Members"
+            />
           </div>
         </section>
       </div>
+
+      {/* BOTTOM NAV */}
 
       <nav
         style={{
@@ -438,15 +500,13 @@ export default function Home() {
           background: "white",
           borderTop: "1px solid #dce3de",
           padding: "10px 5px",
-          display: "flex",
-          justifyContent: "center",
           zIndex: 20,
         }}
       >
         <div
           style={{
-            width: "100%",
             maxWidth: 650,
+            margin: "0 auto",
             display: "flex",
             justifyContent: "space-around",
           }}
@@ -482,9 +542,11 @@ export default function Home() {
   );
 }
 
+/* INPUT STYLE */
+
 const inputStyle: React.CSSProperties = {
   width: "100%",
-  padding: "12px",
+  padding: 12,
   marginTop: 6,
   marginBottom: 15,
   border: "1px solid #d5ddd8",
@@ -493,76 +555,30 @@ const inputStyle: React.CSSProperties = {
   fontFamily: "inherit",
 };
 
-function QuickButton({
-  icon,
-  text,
-}: {
-  icon: React.ReactNode;
-  text: string;
-}) {
-  return (
-    <button
-      style={{
-        border: "none",
-        background: "white",
-        borderRadius: 14,
-        padding: "14px 5px",
-        color: "#254b34",
-        fontWeight: "bold",
-        boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          marginBottom: 5,
-        }}
-      >
-        {icon}
-      </div>
-
-      <div style={{ fontSize: 12 }}>{text}</div>
-    </button>
-  );
-}
+/* CATCH POST */
 
 function CatchPost({
-  name,
-  time,
-  lake,
-  fish,
-  length,
-  weight,
-  imageUrl,
-  caption,
+  item,
 }: {
-  name: string;
-  time: string;
-  lake: string;
-  fish: string;
-  length: string;
-  weight: number | null;
-  imageUrl: string | null;
-  caption: string;
+  item: Catch;
 }) {
   return (
     <article
       style={{
         background: "white",
-        borderRadius: 18,
+        borderRadius: 20,
         marginBottom: 18,
         overflow: "hidden",
         boxShadow: "0 3px 12px rgba(0,0,0,0.07)",
       }}
     >
-      {imageUrl ? (
+      {item.image_url ? (
         <img
-          src={imageUrl}
-          alt={`${fish} caught by ${name}`}
+          src={item.image_url}
+          alt={`${item.fish_species} caught by ${item.name}`}
           style={{
             width: "100%",
-            height: 270,
+            height: 280,
             objectFit: "cover",
             display: "block",
           }}
@@ -570,37 +586,43 @@ function CatchPost({
       ) : (
         <div
           style={{
-            height: 270,
+            height: 220,
             background:
               "linear-gradient(135deg, #86b79b, #2d6845)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: 80,
+            fontSize: 75,
           }}
         >
           🐟
         </div>
       )}
 
-      <div style={{ padding: 17 }}>
+      <div style={{ padding: 18 }}>
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
+            gap: 10,
           }}
         >
           <div>
-            <strong style={{ fontSize: 17 }}>{name}</strong>
+            <strong style={{ fontSize: 18 }}>
+              {item.name}
+            </strong>
 
             <div
               style={{
                 fontSize: 12,
                 color: "#78837c",
-                marginTop: 3,
+                marginTop: 4,
               }}
             >
-              {time} • {lake}
+              {new Date(
+                item.created_at
+              ).toLocaleDateString()}{" "}
+              • {item.lake}
             </div>
           </div>
 
@@ -612,25 +634,34 @@ function CatchPost({
               borderRadius: 10,
               fontSize: 12,
               fontWeight: "bold",
+              height: "fit-content",
             }}
           >
-            {fish}
+            {item.fish_species}
           </div>
         </div>
 
-        <div style={{ marginTop: 14, fontSize: 14 }}>
-          <strong>{length}</strong>
-          {weight ? ` • ${weight} lb` : ""}
+        <div
+          style={{
+            marginTop: 15,
+            fontSize: 15,
+          }}
+        >
+          <strong>{item.length} in</strong>
+
+          {item.weight && (
+            <> • {item.weight} lb</>
+          )}
         </div>
 
-        {caption && (
+        {item.caption && (
           <p
             style={{
               lineHeight: 1.5,
               marginBottom: 12,
             }}
           >
-            {caption}
+            {item.caption}
           </p>
         )}
 
@@ -643,30 +674,20 @@ function CatchPost({
             color: "#68736c",
           }}
         >
-          <span
-            style={{
-              display: "flex",
-              gap: 5,
-              alignItems: "center",
-            }}
-          >
-            <Heart size={19} /> Like
+          <span>
+            <Heart size={18} /> Like
           </span>
 
-          <span
-            style={{
-              display: "flex",
-              gap: 5,
-              alignItems: "center",
-            }}
-          >
-            <MessageCircle size={19} /> Comment
+          <span>
+            <MessageCircle size={18} /> Comment
           </span>
         </div>
       </div>
     </article>
   );
 }
+
+/* STAT */
 
 function Stat({
   number,
@@ -679,7 +700,7 @@ function Stat({
     <div
       style={{
         background: "rgba(255,255,255,0.1)",
-        borderRadius: 12,
+        borderRadius: 13,
         padding: 14,
       }}
     >
@@ -704,6 +725,8 @@ function Stat({
   );
 }
 
+/* NAV */
+
 function NavItem({
   icon,
   text,
@@ -717,9 +740,13 @@ function NavItem({
     <div
       style={{
         textAlign: "center",
-        color: active ? "#2d7a4b" : "#7b857e",
+        color: active
+          ? "#2d7a4b"
+          : "#7b857e",
         fontSize: 11,
-        fontWeight: active ? "bold" : "normal",
+        fontWeight: active
+          ? "bold"
+          : "normal",
       }}
     >
       <div
