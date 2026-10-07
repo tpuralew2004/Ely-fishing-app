@@ -141,10 +141,14 @@ export default function Home() {
 
       await loadCatches();
     } catch (error) {
-      console.error("Error:", error);
-      alert("Something went wrong posting the catch.");
-    }
-
+  console.error("Error:", error);
+  alert(
+    error instanceof Error
+      ? error.message
+      : "Something went wrong posting the catch."
+  );
+}
+    
     setPosting(false);
   }
 
