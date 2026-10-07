@@ -121,7 +121,7 @@ export default function Home() {
         weight,
         lake,
         caption,
-        photo_url: photoUrl,
+        image_url: photoUrl,
       });
 
       if (error) {
