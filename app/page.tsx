@@ -452,6 +452,7 @@ export default function Home() {
       )}
     </main>
   );
+}
   const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: "100vh",
