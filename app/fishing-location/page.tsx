@@ -1,25 +1,33 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, CloudSun, Fish, MapPin, Waves } from "lucide-react";
-
-const DNR_CONTOURS_URL =
-  "https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/water_lake_bathymetry/MapServer/0/query";
+import {
+  ArrowLeft,
+  CloudRain,
+  CloudSun,
+  Droplets,
+  Fish,
+  MapPin,
+  Navigation,
+  Sun,
+  Sunrise,
+  Sunset,
+  Wind,
+} from "lucide-react";
 
 const LAKE_CENTER: [number, number] = [47.86791, -91.81121];
 
 type Weather = {
   temperature: number;
+  feelsLike: number;
   windSpeed: number;
   windDirection: number;
+  windGusts: number;
+  humidity: number;
+  precipitation: number;
   weatherCode: number;
-};
-
-type SelectedDepth = {
-  depth: number;
-  lat: number;
-  lng: number;
-  distanceMeters: number;
+  sunrise: string;
+  sunset: string;
 };
 
 function weatherText(code: number) {
@@ -33,172 +41,159 @@ function weatherText(code: number) {
   return "Thunderstorms";
 }
 
-function haversineMeters(
-  a: [number, number],
-  b: [number, number]
-) {
-  const R = 6371000;
-
-  const lat1 = (a[0] * Math.PI) / 180;
-  const lat2 = (b[0] * Math.PI) / 180;
-
-  const dLat =
-    ((b[0] - a[0]) * Math.PI) / 180;
-
-  const dLng =
-    ((b[1] - a[1]) * Math.PI) / 180;
-
-  const x =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) *
-      Math.cos(lat2) *
-      Math.sin(dLng / 2) ** 2;
-
-  return (
-    2 *
-    R *
-    Math.atan2(
-      Math.sqrt(x),
-      Math.sqrt(1 - x)
-    )
-  );
-}
-
-function pointToSegmentDistance(
-  point: [number, number],
-  start: [number, number],
-  end: [number, number]
-) {
-  const latScale = 111320;
-
-  const lngScale =
-    111320 *
-    Math.cos(
-      (point[0] * Math.PI) / 180
-    );
-
-  const px = point[1] * lngScale;
-  const py = point[0] * latScale;
-
-  const ax = start[1] * lngScale;
-  const ay = start[0] * latScale;
-
-  const bx = end[1] * lngScale;
-  const by = end[0] * latScale;
-
-  const dx = bx - ax;
-  const dy = by - ay;
-
-  const lengthSquared =
-    dx * dx + dy * dy;
-
-  if (lengthSquared === 0) {
-    return {
-      distance: haversineMeters(
-        point,
-        start
-      ),
-      point: start,
-    };
+function weatherIcon(code: number) {
+  if (code === 0) {
+    return <Sun size={42} />;
   }
 
-  const t = Math.max(
-    0,
-    Math.min(
-      1,
-      ((px - ax) * dx +
-        (py - ay) * dy) /
-        lengthSquared
-    )
-  );
+  if (code <= 3) {
+    return <CloudSun size={42} />;
+  }
 
-  const closest: [number, number] = [
-    ay / latScale +
-      (dy * t) / latScale,
+  if (code <= 67) {
+    return <CloudRain size={42} />;
+  }
 
-    ax / lngScale +
-      (dx * t) / lngScale,
+  return <CloudSun size={42} />;
+}
+
+function windDirection(degrees: number) {
+  const directions = [
+    "N",
+    "NE",
+    "E",
+    "SE",
+    "S",
+    "SW",
+    "W",
+    "NW",
   ];
 
-  return {
-    distance: Math.sqrt(
-      (px - (ax + dx * t)) ** 2 +
-        (py - (ay + dy * t)) ** 2
-    ),
+  return directions[
+    Math.round(degrees / 45) % 8
+  ];
+}
 
-    point: closest,
-  };
+function formatTime(time: string) {
+  if (!time) return "--";
+
+  const date = new Date(time);
+
+  return date.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 export default function FishingLocation() {
-  const mapRef =
-    useRef<HTMLDivElement | null>(
-      null
-    );
-
-  const leafletMapRef =
-    useRef<any>(null);
-
-  const contourFeaturesRef =
-    useRef<any[]>([]);
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  const leafletMapRef = useRef<any>(null);
 
   const [weather, setWeather] =
     useState<Weather | null>(null);
 
-  const [mapLoading, setMapLoading] =
+  const [weatherLoading, setWeatherLoading] =
     useState(true);
 
-  const [mapError, setMapError] =
+  const [weatherError, setWeatherError] =
     useState("");
 
-  const [
-    selectedDepth,
-    setSelectedDepth,
-  ] =
-    useState<SelectedDepth | null>(
-      null
-    );
+  const [satellite, setSatellite] =
+    useState(true);
 
   useEffect(() => {
-    fetch(
-      "https://api.open-meteo.com/v1/forecast?latitude=47.86791&longitude=-91.81121&current=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph"
-    )
-      .then((response) =>
-        response.json()
-      )
-      .then((data) => {
-        if (data.current) {
-          setWeather(data.current);
+    const loadWeather = async () => {
+      try {
+        setWeatherLoading(true);
+
+        const url =
+          "https://api.open-meteo.com/v1/forecast" +
+          "?latitude=47.86791" +
+          "&longitude=-91.81121" +
+          "&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m" +
+          "&daily=sunrise,sunset" +
+          "&temperature_unit=fahrenheit" +
+          "&wind_speed_unit=mph" +
+          "&precipitation_unit=inch" +
+          "&timezone=America%2FChicago";
+
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          throw new Error("Weather request failed");
         }
-      })
-      .catch(() => {});
+
+        const data = await response.json();
+
+        if (!data.current) {
+          throw new Error("No current weather data");
+        }
+
+        setWeather({
+          temperature:
+            data.current.temperature_2m,
+
+          feelsLike:
+            data.current.apparent_temperature,
+
+          windSpeed:
+            data.current.wind_speed_10m,
+
+          windDirection:
+            data.current.wind_direction_10m,
+
+          windGusts:
+            data.current.wind_gusts_10m,
+
+          humidity:
+            data.current.relative_humidity_2m,
+
+          precipitation:
+            data.current.precipitation,
+
+          weatherCode:
+            data.current.weather_code,
+
+          sunrise:
+            data.daily?.sunrise?.[0] || "",
+
+          sunset:
+            data.daily?.sunset?.[0] || "",
+        });
+
+        setWeatherError("");
+      } catch (error) {
+        console.error(error);
+        setWeatherError(
+          "Weather information could not be loaded."
+        );
+      } finally {
+        setWeatherLoading(false);
+      }
+    };
+
+    loadWeather();
   }, []);
 
   useEffect(() => {
     if (!mapRef.current) return;
 
     let cancelled = false;
-    let script:
-      | HTMLScriptElement
-      | null = null;
+    let script: HTMLScriptElement | null = null;
 
     const setupMap = async () => {
-      const leafletWindow =
-        window as any;
+      const leafletWindow = window as any;
 
       if (!leafletWindow.L) {
         await new Promise<void>(
           (resolve, reject) => {
             script =
-              document.createElement(
-                "script"
-              );
+              document.createElement("script");
 
             script.src =
               "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
 
-            script.onload = () =>
-              resolve();
+            script.onload = () => resolve();
 
             script.onerror = () =>
               reject(
@@ -207,290 +202,211 @@ export default function FishingLocation() {
                 )
               );
 
-            document.body.appendChild(
-              script
-            );
+            document.body.appendChild(script);
           }
         );
       }
 
-      if (
-        cancelled ||
-        !mapRef.current
-      ) {
+      if (cancelled || !mapRef.current) {
         return;
       }
 
       const L = (window as any).L;
 
-      const map = L.map(
-        mapRef.current,
+      const map = L.map(mapRef.current, {
+        zoomControl: true,
+        scrollWheelZoom: true,
+      }).setView(LAKE_CENTER, 13);
+
+      leafletMapRef.current = map;
+
+      const satelliteLayer =
+        L.tileLayer(
+          "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+          {
+            maxZoom: 19,
+            attribution:
+              "Tiles © Esri",
+          }
+        );
+
+      const streetLayer =
+        L.tileLayer(
+          "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+          {
+            maxZoom: 19,
+            attribution:
+              "© OpenStreetMap contributors",
+          }
+        );
+
+      if (satellite) {
+        satelliteLayer.addTo(map);
+      } else {
+        streetLayer.addTo(map);
+      }
+
+      const lakeOutline = [
+        [47.9005, -91.8500],
+        [47.9060, -91.8320],
+        [47.9000, -91.8100],
+        [47.8890, -91.7900],
+        [47.8750, -91.7780],
+        [47.8580, -91.7780],
+        [47.8440, -91.7950],
+        [47.8340, -91.8180],
+        [47.8420, -91.8400],
+        [47.8580, -91.8500],
+        [47.8780, -91.8580],
+        [47.8950, -91.8500],
+      ];
+
+      /*
+        General rocky shoreline zones.
+
+        These are intentionally broad areas rather than
+        pretending that we know the exact underwater
+        location of every individual rock.
+      */
+
+      const rockyAreas = [
         {
-          zoomControl: true,
-          scrollWheelZoom: true,
-        }
-      ).setView(
-        LAKE_CENTER,
-        13
-      );
-
-      leafletMapRef.current =
-        map;
-
-      L.tileLayer(
-        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+          name: "Rocky North Shore",
+          center: [47.8965, -91.8375],
+          radius: 850,
+        },
         {
-          maxZoom: 19,
-          attribution:
-            "© OpenStreetMap contributors",
-        }
-      ).addTo(map);
+          name: "Rocky West Shore",
+          center: [47.8590, -91.8450],
+          radius: 650,
+        },
+        {
+          name: "Rocky East Shore",
+          center: [47.8750, -91.7930],
+          radius: 600,
+        },
+      ];
 
-      try {
-        const params =
-          new URLSearchParams({
-            where:
-              "dowlknum='69000400'",
-
-            outFields:
-              "depth,abs_depth,lake_name",
-
-            returnGeometry: "true",
-
-            outSR: "4326",
-
-            f: "geojson",
-          });
-
-        const response =
-          await fetch(
-            `${DNR_CONTOURS_URL}?${params.toString()}`
-          );
-
-        if (!response.ok) {
-          throw new Error(
-            "DNR contour request failed"
-          );
-        }
-
-        const geojson =
-          await response.json();
-
-        const features =
-          geojson.features || [];
-
-        contourFeaturesRef.current =
-          features;
-
-        L.geoJSON(geojson, {
-          style: (
-            feature: any
-          ) => {
-            const depth =
-              Number(
-                feature?.properties
-                  ?.depth ?? 0
-              );
-
-            const weight =
-              depth >= 35
-                ? 4
-                : depth >= 20
-                ? 3
-                : 2;
-
-            return {
-              color:
-                depth >= 35
-                  ? "#073B5C"
-                  : "#1677A8",
-
-              weight,
-
-              opacity: 0.9,
-            };
-          },
-
-          onEachFeature: (
-            feature: any,
-            layer: any
-          ) => {
-            const depth =
-              Number(
-                feature?.properties
-                  ?.depth ?? 0
-              );
-
-            layer.bindTooltip(
-              `${depth} ft contour`,
-              {
-                sticky: true,
-                direction: "top",
-              }
-            );
-          },
+      const lakePolygon =
+        L.polygon(lakeOutline, {
+          color: "#FFC83D",
+          weight: 2,
+          opacity: 0.9,
+          fillColor: "#FFC83D",
+          fillOpacity: 0.06,
         }).addTo(map);
 
-        const outlineParams =
-          new URLSearchParams({
-            where:
-              "dowlknum='69000400'",
+      lakePolygon.bindPopup(
+        "<strong>White Iron Lake</strong><br/>" +
+          "Rocky structure areas are highlighted nearby."
+      );
 
-            outFields:
-              "lake_name",
+      rockyAreas.forEach(
+        (area: any) => {
+          const circle =
+            L.circle(area.center, {
+              radius: area.radius,
+              color: "#FFC83D",
+              weight: 2,
+              opacity: 0.9,
+              fillColor: "#FFC83D",
+              fillOpacity: 0.2,
+              dashArray: "8 6",
+            }).addTo(map);
 
-            returnGeometry: "true",
+          circle.bindPopup(
+            `<strong>🪨 ${area.name}</strong><br/>` +
+              `<span style="font-size:12px">` +
+              `Likely rocky structure area. ` +
+              `Look for points, boulders, rock piles, and shoreline structure.` +
+              `</span>`
+          );
+        }
+      );
 
-            outSR: "4326",
+      /*
+        Add fishing structure markers.
+      */
 
-            f: "geojson",
+      const spots = [
+        {
+          name: "Rocky Point",
+          position: [47.8915, -91.8315],
+          description:
+            "Rocky point that may hold fish, especially around changing wind conditions.",
+        },
+        {
+          name: "Rocky Shoreline",
+          position: [47.8615, -91.8410],
+          description:
+            "Rocky shoreline area worth checking for smallmouth, walleye, and pike.",
+        },
+        {
+          name: "Rocky East Point",
+          position: [47.8790, -91.7970],
+          description:
+            "Rocky shoreline and point structure. Check different depths around the point.",
+        },
+      ];
+
+      spots.forEach((spot) => {
+        const icon =
+          L.divIcon({
+            className:
+              "ely-fishing-marker",
+
+            html: `
+              <div style="
+                width:38px;
+                height:38px;
+                border-radius:50%;
+                background:#FFC83D;
+                border:3px solid white;
+                box-shadow:0 3px 10px rgba(0,0,0,.45);
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                font-size:20px;
+              ">
+                🪨
+              </div>
+            `,
+
+            iconSize: [38, 38],
+            iconAnchor: [19, 19],
           });
 
-        const outlineResponse =
-          await fetch(
-            `https://enterprise.gisdata.mn.gov/aghost/rest/services/us_mn_state_dnr/water_lake_bathymetry/MapServer/1/query?${outlineParams.toString()}`
+        L.marker(
+          spot.position,
+          { icon }
+        )
+          .addTo(map)
+          .bindPopup(
+            `<strong>${spot.name}</strong><br/>` +
+              `<span style="font-size:12px">${spot.description}</span>`
           );
+      });
 
-        if (outlineResponse.ok) {
-          const outline =
-            await outlineResponse.json();
+      const bounds =
+        L.latLngBounds(lakeOutline);
 
-          L.geoJSON(outline, {
-            style: {
-              color: "#062D45",
-              weight: 3,
-              fillColor:
-                "#4FB3D1",
-              fillOpacity: 0.08,
-            },
-          }).addTo(map);
-        }
+      map.fitBounds(bounds.pad(0.08), {
+        maxZoom: 14,
+      });
 
-        map.on(
-          "click",
-          (event: any) => {
-            const clickPoint: [
-              number,
-              number
-            ] = [
-              event.latlng.lat,
-              event.latlng.lng,
-            ];
+      /*
+        Make sure Leaflet recalculates the map
+        correctly after the page loads.
+      */
 
-            let closest:
-              | SelectedDepth
-              | null = null;
-
-            for (const feature of
-              contourFeaturesRef.current) {
-              const depth =
-                Number(
-                  feature?.properties
-                    ?.depth
-                );
-
-              const coordinates =
-                feature?.geometry
-                  ?.coordinates || [];
-
-              for (const line of coordinates) {
-                for (
-                  let i = 1;
-                  i < line.length;
-                  i++
-                ) {
-                  const start: [
-                    number,
-                    number
-                  ] = [
-                    line[i - 1][1],
-                    line[i - 1][0],
-                  ];
-
-                  const end: [
-                    number,
-                    number
-                  ] = [
-                    line[i][1],
-                    line[i][0],
-                  ];
-
-                  const result =
-                    pointToSegmentDistance(
-                      clickPoint,
-                      start,
-                      end
-                    );
-
-                  if (
-                    !closest ||
-                    result.distance <
-                      closest.distanceMeters
-                  ) {
-                    closest = {
-                      depth,
-                      lat:
-                        result.point[0],
-                      lng:
-                        result.point[1],
-                      distanceMeters:
-                        result.distance,
-                    };
-                  }
-                }
-              }
-            }
-
-            if (closest) {
-              setSelectedDepth(
-                closest
-              );
-
-              L.popup()
-                .setLatLng(
-                  event.latlng
-                )
-                .setContent(
-                  `<strong>Nearest surveyed contour: ${closest.depth} ft</strong><br/>` +
-                    `<span style="font-size:12px">This is the closest DNR contour to your tap — not an exact point depth.</span>`
-                )
-                .openOn(map);
-            }
-          }
-        );
-
-        map.fitBounds(
-          L.geoJSON(
-            geojson
-          ).getBounds().pad(0.08),
-          {
-            maxZoom: 14,
-          }
-        );
-
-        setMapLoading(false);
-      } catch (error) {
-        console.error(error);
-
-        setMapError(
-          "The DNR depth layer could not load. The rest of the fishing page is still available."
-        );
-
-        setMapLoading(false);
-      }
+      setTimeout(() => {
+        map.invalidateSize();
+      }, 300);
     };
 
-    setupMap().catch(
-      (error) => {
-        console.error(error);
-
-        setMapError(
-          "The interactive map could not load."
-        );
-
-        setMapLoading(false);
-      }
-    );
+    setupMap().catch((error) => {
+      console.error(error);
+    });
 
     return () => {
       cancelled = true;
@@ -498,8 +414,7 @@ export default function FishingLocation() {
       if (leafletMapRef.current) {
         leafletMapRef.current.remove();
 
-        leafletMapRef.current =
-          null;
+        leafletMapRef.current = null;
       }
 
       if (
@@ -511,19 +426,30 @@ export default function FishingLocation() {
         );
       }
     };
-  }, []);
+  }, [satellite]);
 
   return (
     <main style={styles.page}>
       <style>{`
         @import url('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
+
+        .leaflet-popup-content-wrapper {
+          border-radius: 14px;
+        }
+
+        .leaflet-popup-content {
+          margin: 13px 15px;
+          line-height: 1.45;
+          font-family: Arial, Helvetica, sans-serif;
+        }
       `}</style>
+
+      {/* ================= HEADER ================= */}
 
       <section style={styles.header}>
         <button
           onClick={() =>
-            (window.location.href =
-              "/")
+            (window.location.href = "/")
           }
           style={styles.backButton}
         >
@@ -531,40 +457,23 @@ export default function FishingLocation() {
           Back to Feed
         </button>
 
-        <div
-          style={
-            styles.headerTitleRow
-          }
-        >
+        <div style={styles.headerTitleRow}>
           <div>
-            <div
-              style={styles.eyebrow}
-            >
+            <div style={styles.eyebrow}>
               WHITE IRON LAKE
             </div>
 
-            <h1
-              style={styles.title}
-            >
+            <h1 style={styles.title}>
               Fishing Location
             </h1>
 
-            <p
-              style={
-                styles.subtitle
-              }
-            >
-              Explore the lake and
-              tap near a contour to
-              see its surveyed depth.
+            <p style={styles.subtitle}>
+              Find rocky structure and see
+              where to start fishing.
             </p>
           </div>
 
-          <div
-            style={
-              styles.logoCircle
-            }
-          >
+          <div style={styles.logoCircle}>
             <img
               src="/loon-logo.png.png"
               alt="Loon"
@@ -575,91 +484,260 @@ export default function FishingLocation() {
       </section>
 
       <section style={styles.content}>
-        {weather && (
-          <div
-            style={
-              styles.weatherCard
-            }
-          >
-            <div
-              style={
-                styles.weatherIcon
-              }
-            >
-              <CloudSun size={28} />
-            </div>
 
+        {/* ================= WEATHER ================= */}
+
+        <section style={styles.weatherSection}>
+          <div style={styles.weatherTop}>
             <div>
-              <div
-                style={
-                  styles.cardEyebrow
-                }
-              >
-                CURRENT WEATHER
+              <div style={styles.cardEyebrow}>
+                WHITE IRON LAKE
               </div>
 
-              <div
-                style={
-                  styles.weatherMain
-                }
-              >
-                {Math.round(
-                  weather.temperature
-                )}
-                °F ·{" "}
-                {weatherText(
-                  weather.weatherCode
-                )}
-              </div>
-
-              <div
-                style={styles.muted}
-              >
-                Wind{" "}
-                {Math.round(
-                  weather.windSpeed
-                )}{" "}
-                mph ·{" "}
-                {Math.round(
-                  weather.windDirection
-                )}
-                °
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div
-          style={styles.mapCard}
-        >
-          <div
-            style={
-              styles.mapHeader
-            }
-          >
-            <div>
-              <div
-                style={
-                  styles.cardEyebrow
-                }
-              >
-                INTERACTIVE DEPTH MAP
-              </div>
-
-              <h2
-                style={styles.mapTitle}
-              >
-                White Iron Lake
+              <h2 style={styles.weatherTitle}>
+                Today's Weather
               </h2>
             </div>
 
-            <div
+            {weather && (
+              <div style={styles.weatherConditionIcon}>
+                {weatherIcon(
+                  weather.weatherCode
+                )}
+              </div>
+            )}
+          </div>
+
+          {weatherLoading && (
+            <div style={styles.weatherLoading}>
+              Loading current weather...
+            </div>
+          )}
+
+          {weatherError && (
+            <div style={styles.weatherError}>
+              {weatherError}
+            </div>
+          )}
+
+          {weather && !weatherLoading && (
+            <>
+              <div style={styles.temperatureRow}>
+                <div style={styles.temperature}>
+                  {Math.round(
+                    weather.temperature
+                  )}
+                  <span>°F</span>
+                </div>
+
+                <div>
+                  <div
+                    style={
+                      styles.conditionText
+                    }
+                  >
+                    {weatherText(
+                      weather.weatherCode
+                    )}
+                  </div>
+
+                  <div
+                    style={
+                      styles.feelsLike
+                    }
+                  >
+                    Feels like{" "}
+                    {Math.round(
+                      weather.feelsLike
+                    )}
+                    °F
+                  </div>
+                </div>
+              </div>
+
+              <div style={styles.weatherGrid}>
+
+                <div style={styles.weatherStat}>
+                  <Wind
+                    size={20}
+                    color="#FFC83D"
+                  />
+
+                  <div>
+                    <span>
+                      WIND
+                    </span>
+
+                    <strong>
+                      {Math.round(
+                        weather.windSpeed
+                      )}{" "}
+                      mph{" "}
+                      {windDirection(
+                        weather.windDirection
+                      )}
+                    </strong>
+                  </div>
+                </div>
+
+                <div style={styles.weatherStat}>
+                  <Navigation
+                    size={20}
+                    color="#FFC83D"
+                  />
+
+                  <div>
+                    <span>
+                      GUSTS
+                    </span>
+
+                    <strong>
+                      {Math.round(
+                        weather.windGusts
+                      )} mph
+                    </strong>
+                  </div>
+                </div>
+
+                <div style={styles.weatherStat}>
+                  <Droplets
+                    size={20}
+                    color="#FFC83D"
+                  />
+
+                  <div>
+                    <span>
+                      HUMIDITY
+                    </span>
+
+                    <strong>
+                      {Math.round(
+                        weather.humidity
+                      )}
+                      %
+                    </strong>
+                  </div>
+                </div>
+
+                <div style={styles.weatherStat}>
+                  <CloudRain
+                    size={20}
+                    color="#FFC83D"
+                  />
+
+                  <div>
+                    <span>
+                      PRECIPITATION
+                    </span>
+
+                    <strong>
+                      {weather.precipitation.toFixed(
+                        2
+                      )}
+                      "
+                    </strong>
+                  </div>
+                </div>
+
+              </div>
+
+              <div style={styles.sunRow}>
+
+                <div style={styles.sunItem}>
+                  <Sunrise
+                    size={20}
+                    color="#FFC83D"
+                  />
+
+                  <div>
+                    <span>
+                      SUNRISE
+                    </span>
+
+                    <strong>
+                      {formatTime(
+                        weather.sunrise
+                      )}
+                    </strong>
+                  </div>
+                </div>
+
+                <div style={styles.sunItem}>
+                  <Sunset
+                    size={20}
+                    color="#FFC83D"
+                  />
+
+                  <div>
+                    <span>
+                      SUNSET
+                    </span>
+
+                    <strong>
+                      {formatTime(
+                        weather.sunset
+                      )}
+                    </strong>
+                  </div>
+                </div>
+
+              </div>
+            </>
+          )}
+        </section>
+
+        {/* ================= ROCK MAP ================= */}
+
+        <section style={styles.mapCard}>
+
+          <div style={styles.mapHeader}>
+            <div>
+              <div style={styles.cardEyebrow}>
+                FIND THE STRUCTURE
+              </div>
+
+              <h2 style={styles.mapTitle}>
+                Rocky Areas
+              </h2>
+
+              <p style={styles.mapSubtitle}>
+                Look for rocks, points,
+                boulders and shoreline
+                structure.
+              </p>
+            </div>
+
+            <div style={styles.rockBadge}>
+              🪨 Rock
+            </div>
+          </div>
+
+          <div style={styles.mapControls}>
+            <button
+              onClick={() =>
+                setSatellite(true)
+              }
               style={
-                styles.depthBadge
+                satellite
+                  ? styles.mapToggleActive
+                  : styles.mapToggle
               }
             >
-              DNR contours
-            </div>
+              Satellite
+            </button>
+
+            <button
+              onClick={() =>
+                setSatellite(false)
+              }
+              style={
+                !satellite
+                  ? styles.mapToggleActive
+                  : styles.mapToggle
+              }
+            >
+              Map
+            </button>
           </div>
 
           <div
@@ -667,139 +745,126 @@ export default function FishingLocation() {
             style={styles.map}
           />
 
-          {mapLoading && (
-            <div
-              style={
-                styles.mapOverlay
-              }
-            >
-              Loading DNR depth
-              contours…
-            </div>
-          )}
+          <div style={styles.mapLegend}>
 
-          {mapError && (
-            <div
-              style={styles.error}
-            >
-              {mapError}
-            </div>
-          )}
-
-          <div
-            style={styles.legend}
-          >
-            <span>
-              <i
-                style={{
-                  ...styles.legendDot,
-                  background:
-                    "#1677A8",
-                }}
-              />{" "}
-              0–20 ft
-            </span>
-
-            <span>
-              <i
-                style={{
-                  ...styles.legendDot,
-                  background:
-                    "#073B5C",
-                }}
-              />{" "}
-              35–40 ft
-            </span>
-
-            <span>
-              <i
+            <div>
+              <span
                 style={
-                  styles.legendLine
+                  styles.yellowDot
                 }
-              />{" "}
-              surveyed contour
-            </span>
-          </div>
-        </div>
+              />
+              Rocky area
+            </div>
 
-        {selectedDepth && (
-          <div
-            style={
-              styles.selectedCard
-            }
-          >
+            <div>
+              <span
+                style={
+                  styles.rockMarker
+                }
+              >
+                🪨
+              </span>
+              Structure spot
+            </div>
+
+          </div>
+        </section>
+
+        {/* ================= FISHING TIPS ================= */}
+
+        <section style={styles.structureCard}>
+
+          <div style={styles.structureHeader}>
             <div
               style={
-                styles.selectedIcon
+                styles.structureIcon
               }
             >
-              <Waves size={24} />
+              <Fish size={24} />
             </div>
 
             <div>
               <div
+                style={styles.cardEyebrow}
+              >
+                WHERE TO START
+              </div>
+
+              <h2
                 style={
-                  styles.cardEyebrow
+                  styles.structureTitle
                 }
               >
-                MAP SELECTION
-              </div>
-
-              <div
-                style={
-                  styles.selectedDepth
-                }
-              >
-                {selectedDepth.depth} ft
-              </div>
-
-              <div
-                style={styles.muted}
-              >
-                Nearest surveyed
-                contour to your tap
-                · about{" "}
-                {Math.round(
-                  selectedDepth.distanceMeters
-                )}{" "}
-                m away
-              </div>
+                Fish the Rocks
+              </h2>
             </div>
           </div>
-        )}
 
-        <div
-          style={styles.infoGrid}
-        >
-          <div
-            style={styles.infoCard}
-          >
-            <div
-              style={
-                styles.infoIcon
-              }
-            >
-              <Waves size={22} />
+          <div style={styles.tipList}>
+
+            <div style={styles.tip}>
+              <div style={styles.tipNumber}>
+                1
+              </div>
+
+              <div>
+                <strong>
+                  Rocky points
+                </strong>
+
+                <p>
+                  Check the tip and both
+                  sides of rocky points.
+                </p>
+              </div>
             </div>
 
-            <strong>
-              47 ft
-            </strong>
+            <div style={styles.tip}>
+              <div style={styles.tipNumber}>
+                2
+              </div>
 
-            <span>
-              maximum depth reported
-              by MN DNR
-            </span>
+              <div>
+                <strong>
+                  Boulders & rock piles
+                </strong>
+
+                <p>
+                  Rocks can create places
+                  for fish to hold and
+                  ambush prey.
+                </p>
+              </div>
+            </div>
+
+            <div style={styles.tip}>
+              <div style={styles.tipNumber}>
+                3
+              </div>
+
+              <div>
+                <strong>
+                  Wind-blown shoreline
+                </strong>
+
+                <p>
+                  When the wind pushes
+                  bait toward rocky
+                  shoreline, it can be
+                  worth checking.
+                </p>
+              </div>
+            </div>
+
           </div>
+        </section>
 
-          <div
-            style={styles.infoCard}
-          >
-            <div
-              style={
-                styles.infoIcon
-              }
-            >
+        {/* ================= LAKE INFO ================= */}
+
+        <div style={styles.infoGrid}>
+
+          <div style={styles.infoCard}>
+            <div style={styles.infoIcon}>
               <MapPin size={22} />
             </div>
 
@@ -809,18 +874,11 @@ export default function FishingLocation() {
 
             <span>
               White Iron Lake
-              surface area
             </span>
           </div>
 
-          <div
-            style={styles.infoCard}
-          >
-            <div
-              style={
-                styles.infoIcon
-              }
-            >
+          <div style={styles.infoCard}>
+            <div style={styles.infoIcon}>
               <Fish size={22} />
             </div>
 
@@ -829,51 +887,62 @@ export default function FishingLocation() {
             </strong>
 
             <span>
-              one of the lake’s
-              major game fish
+              Major game fish
             </span>
           </div>
+
+          <div style={styles.infoCard}>
+            <div style={styles.infoIcon}>
+              🪨
+            </div>
+
+            <strong>
+              Rocky
+            </strong>
+
+            <span>
+              Shoreline structure
+            </span>
+          </div>
+
         </div>
 
-        <div
-          style={styles.noteCard}
-        >
+        {/* ================= NOTE ================= */}
+
+        <div style={styles.noteCard}>
+
           <strong>
-            How the map works
+            About the rock map
           </strong>
 
           <p>
-            The lines are the
-            Minnesota DNR’s surveyed
-            bathymetric contours.
-            Tap the map to find the
-            closest surveyed contour.
-            A tap between lines is
-            not an exact depth
-            reading, so the site does
-            not pretend to give a
-            made-up precise number.
+            The highlighted areas are
+            intended to help identify
+            places where rocky structure
+            may be worth checking.
           </p>
 
-          <p
-            style={styles.muted}
-          >
-            The historical DNR survey
-            maps White Iron Lake with
-            contours to 40 ft, while
-            the DNR lake information
-            reports a 47 ft maximum
-            depth.
+          <p style={styles.muted}>
+            Individual underwater rocks
+            aren't mapped here as exact
+            GPS locations, so the map
+            avoids pretending that an
+            exact rock is guaranteed at
+            every marker.
           </p>
+
         </div>
+
       </section>
 
+      {/* ================= NAV ================= */}
+
       <nav style={styles.nav}>
+
         <button
           style={styles.navButton}
           onClick={() =>
-            (window.location.href =
-              "/")
+            (window.location.href = "/")
           }
         >
           <Fish size={21} />
@@ -886,15 +955,22 @@ export default function FishingLocation() {
           <MapPin size={21} />
           Fishing
         </button>
+
       </nav>
+
     </main>
   );
 }
+
+/* =========================================================
+   STYLES
+========================================================= */
 
 const styles: Record<
   string,
   React.CSSProperties
 > = {
+
   page: {
     minHeight: "100vh",
     background: "#050B10",
@@ -907,7 +983,8 @@ const styles: Record<
   header: {
     background:
       "linear-gradient(145deg, #071827, #0B2637)",
-    padding: "22px 22px 28px",
+    padding:
+      "22px 22px 30px",
     borderBottom:
       "1px solid rgba(255,255,255,0.1)",
   },
@@ -918,7 +995,8 @@ const styles: Record<
       "rgba(255,255,255,0.08)",
     color: "#fff",
     borderRadius: 12,
-    padding: "10px 13px",
+    padding:
+      "10px 13px",
     display: "flex",
     alignItems: "center",
     gap: 7,
@@ -928,7 +1006,8 @@ const styles: Record<
 
   headerTitleRow: {
     maxWidth: 900,
-    margin: "25px auto 0",
+    margin:
+      "25px auto 0",
     display: "flex",
     justifyContent:
       "space-between",
@@ -944,14 +1023,16 @@ const styles: Record<
   },
 
   title: {
-    margin: "6px 0 0",
+    margin:
+      "6px 0 0",
     fontSize: 38,
     lineHeight: 1,
     fontWeight: 900,
   },
 
   subtitle: {
-    margin: "10px 0 0",
+    margin:
+      "10px 0 0",
     color:
       "rgba(255,255,255,0.65)",
     fontSize: 14,
@@ -968,8 +1049,7 @@ const styles: Record<
       "1px solid rgba(255,255,255,0.15)",
     display: "flex",
     alignItems: "center",
-    justifyContent:
-      "center",
+    justifyContent: "center",
     flexShrink: 0,
   },
 
@@ -985,55 +1065,132 @@ const styles: Record<
     padding: "22px",
   },
 
-  weatherCard: {
-    display: "flex",
-    alignItems: "center",
-    gap: 14,
-    padding: 17,
-    borderRadius: 20,
+  /* WEATHER */
+
+  weatherSection: {
+    padding: 22,
+    borderRadius: 24,
     background:
-      "rgba(30,120,183,0.16)",
+      "linear-gradient(145deg, #0C3046, #082235)",
     border:
-      "1px solid rgba(255,255,255,0.1)",
-    marginBottom: 16,
+      "1px solid rgba(255,255,255,0.12)",
+    marginBottom: 18,
+    boxShadow:
+      "0 15px 40px rgba(0,0,0,0.2)",
   },
 
-  weatherIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
+  weatherTop: {
     display: "flex",
     alignItems: "center",
     justifyContent:
-      "center",
-    background: "#FFC83D",
-    color: "#050B10",
+      "space-between",
   },
 
-  cardEyebrow: {
+  weatherTitle: {
+    margin:
+      "5px 0 0",
+    fontSize: 26,
+    fontWeight: 900,
+  },
+
+  weatherConditionIcon: {
+    width: 70,
+    height: 70,
+    borderRadius: 20,
+    background:
+      "rgba(255,200,61,0.15)",
     color: "#FFC83D",
-    fontSize: 9,
-    fontWeight: 900,
-    letterSpacing: 2,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
-  weatherMain: {
-    marginTop: 4,
-    fontSize: 18,
-    fontWeight: 900,
+  weatherLoading: {
+    marginTop: 20,
+    color:
+      "rgba(255,255,255,0.6)",
   },
 
-  muted: {
-    marginTop: 3,
+  weatherError: {
+    marginTop: 18,
+    padding: 13,
+    borderRadius: 12,
+    background:
+      "rgba(255,100,80,0.12)",
+    color: "#FFC83D",
+  },
+
+  temperatureRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 18,
+    marginTop: 18,
+  },
+
+  temperature: {
+    fontSize: 64,
+    fontWeight: 900,
+    lineHeight: 0.95,
+    letterSpacing: -3,
+  },
+
+  conditionText: {
+    fontSize: 19,
+    fontWeight: 800,
+  },
+
+  feelsLike: {
+    marginTop: 5,
     color:
       "rgba(255,255,255,0.55)",
-    fontSize: 12,
-    lineHeight: 1.5,
+    fontSize: 13,
   },
+
+  weatherGrid: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(2, 1fr)",
+    gap: 10,
+    marginTop: 22,
+  },
+
+  weatherStat: {
+    display: "flex",
+    alignItems: "center",
+    gap: 11,
+    padding: 13,
+    borderRadius: 15,
+    background:
+      "rgba(255,255,255,0.05)",
+  },
+
+  weatherStatSpan: {},
+
+  weatherStatStrong: {},
+
+  sunRow: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(2, 1fr)",
+    gap: 10,
+    marginTop: 10,
+  },
+
+  sunItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: 13,
+    borderRadius: 15,
+    background:
+      "rgba(255,255,255,0.05)",
+  },
+
+  /* MAP */
 
   mapCard: {
     overflow: "hidden",
-    borderRadius: 23,
+    borderRadius: 24,
     background: "#071827",
     border:
       "1px solid rgba(255,255,255,0.12)",
@@ -1043,28 +1200,74 @@ const styles: Record<
 
   mapHeader: {
     padding:
-      "18px 18px 15px",
+      "19px 19px 14px",
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent:
       "space-between",
-    gap: 12,
+    gap: 15,
   },
 
   mapTitle: {
-    margin: "4px 0 0",
-    fontSize: 25,
+    margin:
+      "5px 0 0",
+    fontSize: 27,
     fontWeight: 900,
   },
 
-  depthBadge: {
-    padding: "7px 10px",
+  mapSubtitle: {
+    margin:
+      "6px 0 0",
+    color:
+      "rgba(255,255,255,0.55)",
+    fontSize: 13,
+    lineHeight: 1.45,
+  },
+
+  rockBadge: {
+    padding:
+      "8px 11px",
     borderRadius: 999,
     background:
-      "rgba(79,179,209,0.16)",
-    color: "#8FDDF0",
-    fontSize: 11,
+      "rgba(255,200,61,0.15)",
+    color: "#FFC83D",
+    fontSize: 12,
+    fontWeight: 900,
+    whiteSpace: "nowrap",
+  },
+
+  mapControls: {
+    display: "flex",
+    gap: 7,
+    padding:
+      "0 18px 14px",
+  },
+
+  mapToggle: {
+    border:
+      "1px solid rgba(255,255,255,0.12)",
+    background:
+      "rgba(255,255,255,0.05)",
+    color:
+      "rgba(255,255,255,0.65)",
+    padding:
+      "8px 13px",
+    borderRadius: 10,
+    cursor: "pointer",
     fontWeight: 800,
+  },
+
+  mapToggleActive: {
+    border:
+      "1px solid rgba(255,200,61,0.4)",
+    background:
+      "rgba(255,200,61,0.16)",
+    color: "#FFC83D",
+    padding:
+      "8px 13px",
+    borderRadius: 10,
+    cursor: "pointer",
+    fontWeight: 900,
   },
 
   map: {
@@ -1073,73 +1276,51 @@ const styles: Record<
     background: "#D9EEF5",
   },
 
-  mapOverlay: {
-    position: "relative",
-    margin: "-520px 0 0",
-    height: 520,
-    display: "flex",
-    alignItems: "center",
-    justifyContent:
-      "center",
-    pointerEvents: "none",
-    background:
-      "rgba(5,11,16,0.18)",
-    color: "#fff",
-    fontWeight: 800,
-  },
-
-  error: {
-    padding: 15,
-    color: "#FFC83D",
-    background:
-      "rgba(255,112,67,0.12)",
-  },
-
-  legend: {
+  mapLegend: {
     display: "flex",
     flexWrap: "wrap",
-    gap: 15,
+    gap: 18,
     padding:
       "13px 17px",
     color:
       "rgba(255,255,255,0.7)",
-    fontSize: 11,
+    fontSize: 12,
     borderTop:
       "1px solid rgba(255,255,255,0.08)",
   },
 
-  legendDot: {
+  yellowDot: {
     display: "inline-block",
-    width: 9,
-    height: 9,
+    width: 11,
+    height: 11,
     borderRadius: "50%",
+    background: "#FFC83D",
+    marginRight: 6,
+  },
+
+  rockMarker: {
     marginRight: 5,
   },
 
-  legendLine: {
-    display: "inline-block",
-    width: 18,
-    height: 3,
-    background: "#1677A8",
-    marginRight: 5,
-    verticalAlign:
-      "middle",
-  },
+  /* STRUCTURE */
 
-  selectedCard: {
-    marginTop: 16,
-    padding: 18,
-    borderRadius: 20,
+  structureCard: {
+    marginTop: 18,
+    padding: 20,
+    borderRadius: 22,
     background:
-      "rgba(255,200,61,0.1)",
+      "rgba(255,255,255,0.04)",
     border:
-      "1px solid rgba(255,200,61,0.2)",
-    display: "flex",
-    gap: 14,
-    alignItems: "center",
+      "1px solid rgba(255,255,255,0.09)",
   },
 
-  selectedIcon: {
+  structureHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 13,
+  },
+
+  structureIcon: {
     width: 48,
     height: 48,
     borderRadius: 15,
@@ -1147,22 +1328,50 @@ const styles: Record<
     color: "#050B10",
     display: "flex",
     alignItems: "center",
-    justifyContent:
-      "center",
+    justifyContent: "center",
   },
 
-  selectedDepth: {
-    fontSize: 27,
+  structureTitle: {
+    margin:
+      "4px 0 0",
+    fontSize: 24,
     fontWeight: 900,
-    marginTop: 2,
   },
+
+  tipList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 13,
+    marginTop: 20,
+  },
+
+  tip: {
+    display: "flex",
+    gap: 12,
+  },
+
+  tipNumber: {
+    width: 29,
+    height: 29,
+    borderRadius: "50%",
+    background:
+      "rgba(255,200,61,0.15)",
+    color: "#FFC83D",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: 900,
+    flexShrink: 0,
+  },
+
+  /* INFO */
 
   infoGrid: {
     display: "grid",
     gridTemplateColumns:
       "repeat(3, 1fr)",
     gap: 12,
-    marginTop: 16,
+    marginTop: 18,
   },
 
   infoCard: {
@@ -1172,6 +1381,8 @@ const styles: Record<
       "rgba(255,255,255,0.04)",
     border:
       "1px solid rgba(255,255,255,0.09)",
+    display: "flex",
+    flexDirection: "column",
   },
 
   infoIcon: {
@@ -1179,8 +1390,10 @@ const styles: Record<
     marginBottom: 10,
   },
 
+  /* NOTE */
+
   noteCard: {
-    marginTop: 16,
+    marginTop: 18,
     padding: 18,
     borderRadius: 20,
     background:
@@ -1191,6 +1404,15 @@ const styles: Record<
     fontSize: 13,
   },
 
+  muted: {
+    color:
+      "rgba(255,255,255,0.55)",
+    fontSize: 12,
+    lineHeight: 1.5,
+  },
+
+  /* NAV */
+
   nav: {
     position: "fixed",
     zIndex: 80,
@@ -1199,16 +1421,14 @@ const styles: Record<
     right: 0,
     height: 72,
     display: "flex",
-    justifyContent:
-      "center",
+    justifyContent: "center",
     alignItems: "center",
     gap: 70,
     background:
       "rgba(5,11,16,0.96)",
     borderTop:
       "1px solid rgba(255,255,255,0.12)",
-    backdropFilter:
-      "blur(18px)",
+    backdropFilter: "blur(18px)",
   },
 
   navButton: {
@@ -1217,8 +1437,7 @@ const styles: Record<
     color:
       "rgba(255,255,255,0.45)",
     display: "flex",
-    flexDirection:
-      "column",
+    flexDirection: "column",
     alignItems: "center",
     gap: 4,
     fontWeight: 700,
@@ -1230,8 +1449,7 @@ const styles: Record<
     background: "transparent",
     color: "#FFC83D",
     display: "flex",
-    flexDirection:
-      "column",
+    flexDirection: "column",
     alignItems: "center",
     gap: 4,
     fontWeight: 800,
