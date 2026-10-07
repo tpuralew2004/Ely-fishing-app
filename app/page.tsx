@@ -126,7 +126,7 @@ export default function Home() {
 
       if (error) {
         console.error("Post error:", error);
-        alert("Something went wrong posting the catch.");
+        alert(`Post error: ${error.message}`);
         return;
       }
 
