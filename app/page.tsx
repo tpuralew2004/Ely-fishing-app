@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import {
   Camera,
   Fish,
@@ -15,7 +16,6 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
-  Scale,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 
@@ -98,12 +98,11 @@ export default function Home() {
 
       if (Array.isArray(parsed)) {
         return parsed.filter(
-          (url): url is string =>
-            typeof url === "string"
+          (url): url is string => typeof url === "string"
         );
       }
     } catch {
-      // Old posts use one normal URL.
+      // Older posts contain one normal URL.
     }
 
     return [item.image_url];
@@ -160,9 +159,7 @@ export default function Home() {
           throw signedError;
         }
 
-        uploadedUrls.push(
-          signedData.signedUrl
-        );
+        uploadedUrls.push(signedData.signedUrl);
       }
 
       const imageUrl =
@@ -176,9 +173,7 @@ export default function Home() {
           name: name.trim(),
           fish_species: fishSpecies.trim(),
           length: Number(length),
-          weight: weight
-            ? Number(weight)
-            : null,
+          weight: weight ? Number(weight) : null,
           lake: lake.trim(),
           caption: caption.trim() || null,
           image_url: imageUrl,
@@ -233,10 +228,7 @@ export default function Home() {
     if (error) {
       console.error(error);
 
-      alert(
-        "Could not delete this catch."
-      );
-
+      alert("Could not delete this catch.");
       return;
     }
 
@@ -343,7 +335,7 @@ export default function Home() {
         handleKeyboard
       );
     };
-  });
+  }, [viewerCatch, viewerPhotoIndex]);
 
   const totalWeight = useMemo(() => {
     return catches.reduce(
@@ -361,9 +353,7 @@ export default function Home() {
 
   return (
     <main style={styles.page}>
-      {/* =========================
-          HERO
-      ========================= */}
+      {/* HERO */}
 
       <section style={styles.hero}>
         <div style={styles.heroImage} />
@@ -415,9 +405,7 @@ export default function Home() {
             </div>
 
             <button
-              onClick={() =>
-                setShowPost(true)
-              }
+              onClick={() => setShowPost(true)}
               style={styles.postButton}
             >
               <Plus size={20} />
@@ -427,9 +415,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* =========================
-          FEED
-      ========================= */}
+      {/* FEED */}
 
       <section style={styles.feed}>
         <div style={styles.sectionHeader}>
@@ -454,25 +440,20 @@ export default function Home() {
           </div>
         )}
 
-        {!loading &&
-          catches.length === 0 && (
-            <div style={styles.emptyCard}>
-              <div
-                style={styles.emptyIcon}
-              >
-                <Fish size={32} />
-              </div>
-
-              <h3>
-                No catches yet
-              </h3>
-
-              <p>
-                Be the first to add a fish
-                to the family board.
-              </p>
+        {!loading && catches.length === 0 && (
+          <div style={styles.emptyCard}>
+            <div style={styles.emptyIcon}>
+              <Fish size={32} />
             </div>
-          )}
+
+            <h3>No catches yet</h3>
+
+            <p>
+              Be the first to add a fish
+              to the family board.
+            </p>
+          </div>
+        )}
 
         {!loading &&
           catches.map((item) => {
@@ -485,63 +466,32 @@ export default function Home() {
                 style={styles.catchCard}
               >
                 {itemPhotos.length > 0 && (
-                  <div
-                    style={
-                      styles.photoSection
-                    }
-                  >
+                  <div style={styles.photoSection}>
                     <button
                       onClick={() =>
-                        openViewer(
-                          item,
-                          0
-                        )
+                        openViewer(item, 0)
                       }
-                      style={
-                        styles.mainPhotoButton
-                      }
+                      style={styles.mainPhotoButton}
                     >
                       <img
-                        src={
-                          itemPhotos[0]
-                        }
-                        alt={
-                          item.fish_species
-                        }
-                        style={
-                          styles.catchImage
-                        }
+                        src={itemPhotos[0]}
+                        alt={item.fish_species}
+                        style={styles.catchImage}
                       />
                     </button>
 
-                    {itemPhotos.length >
-                      1 && (
-                      <div
-                        style={
-                          styles.photoCount
-                        }
-                      >
-                        {itemPhotos.length}{" "}
-                        photos
+                    {itemPhotos.length > 1 && (
+                      <div style={styles.photoCount}>
+                        {itemPhotos.length} photos
                       </div>
                     )}
 
-                    {itemPhotos.length >
-                      1 && (
-                      <div
-                        style={
-                          styles.photoStrip
-                        }
-                      >
+                    {itemPhotos.length > 1 && (
+                      <div style={styles.photoStrip}>
                         {itemPhotos.map(
-                          (
-                            photo,
-                            index
-                          ) => (
+                          (photo, index) => (
                             <button
-                              key={
-                                `${item.id}-${index}`
-                              }
+                              key={`${item.id}-${index}`}
                               onClick={() =>
                                 openViewer(
                                   item,
@@ -555,9 +505,7 @@ export default function Home() {
                               <img
                                 src={photo}
                                 alt=""
-                                style={
-                                  styles.thumbnail
-                                }
+                                style={styles.thumbnail}
                               />
                             </button>
                           )
@@ -567,56 +515,30 @@ export default function Home() {
                   </div>
                 )}
 
-                <div
-                  style={
-                    styles.catchContent
-                  }
-                >
-                  <div
-                    style={
-                      styles.catchTop
-                    }
-                  >
+                <div style={styles.catchContent}>
+                  <div style={styles.catchTop}>
                     <div>
-                      <div
-                        style={
-                          styles.catchPerson
-                        }
-                      >
+                      <div style={styles.catchPerson}>
                         {item.name}
                       </div>
 
-                      <h3
-                        style={
-                          styles.fishName
-                        }
-                      >
+                      <h3 style={styles.fishName}>
                         {item.fish_species}
                       </h3>
                     </div>
 
                     <button
                       onClick={() =>
-                        deleteCatch(
-                          item.id
-                        )
+                        deleteCatch(item.id)
                       }
-                      style={
-                        styles.deleteButton
-                      }
+                      style={styles.deleteButton}
                       title="Delete catch"
                     >
-                      <Trash2
-                        size={17}
-                      />
+                      <Trash2 size={17} />
                     </button>
                   </div>
 
-                  <div
-                    style={
-                      styles.metadata
-                    }
-                  >
+                  <div style={styles.metadata}>
                     <span>
                       Length —{" "}
                       <strong>
@@ -627,8 +549,7 @@ export default function Home() {
                     <span>
                       Weight —{" "}
                       <strong>
-                        {item.weight !==
-                        null
+                        {item.weight !== null
                           ? `${item.weight} lbs`
                           : "—"}
                       </strong>
@@ -643,25 +564,13 @@ export default function Home() {
                   </div>
 
                   {item.caption && (
-                    <p
-                      style={
-                        styles.caption
-                      }
-                    >
+                    <p style={styles.caption}>
                       {item.caption}
                     </p>
                   )}
 
-                  <div
-                    style={
-                      styles.catchFooter
-                    }
-                  >
-                    <span
-                      style={
-                        styles.dateText
-                      }
-                    >
+                  <div style={styles.catchFooter}>
+                    <span style={styles.dateText}>
                       {new Date(
                         item.created_at
                       ).toLocaleDateString(
@@ -676,17 +585,11 @@ export default function Home() {
 
                     <button
                       onClick={() =>
-                        openViewer(
-                          item,
-                          0
-                        )
+                        openViewer(item, 0)
                       }
-                      style={
-                        styles.viewButton
-                      }
+                      style={styles.viewButton}
                     >
-                      {itemPhotos.length >
-                      0
+                      {itemPhotos.length > 0
                         ? "View photo"
                         : "View catch"}
                     </button>
@@ -696,40 +599,26 @@ export default function Home() {
             );
           })}
 
-        {/* =========================
-            TRIP STATS
-        ========================= */}
+        {/* TRIP STATS */}
 
         <div style={styles.tripCard}>
           <div style={styles.tripHeader}>
             <div>
-              <div
-                style={
-                  styles.tripEyebrow
-                }
-              >
+              <div style={styles.tripEyebrow}>
                 THIS TRIP
               </div>
 
-              <h2
-                style={
-                  styles.tripTitle
-                }
-              >
+              <h2 style={styles.tripTitle}>
                 Trip Stats
               </h2>
             </div>
 
-            <div
-              style={styles.tripIcon}
-            >
+            <div style={styles.tripIcon}>
               <Trophy size={20} />
             </div>
           </div>
 
-          <div
-            style={styles.tripStats}
-          >
+          <div style={styles.tripStats}>
             <div style={styles.tripStat}>
               <strong>
                 {catches.length}
@@ -753,9 +642,7 @@ export default function Home() {
             <div style={styles.tripStat}>
               <strong>
                 {totalWeight
-                  ? totalWeight.toFixed(
-                      1
-                    )
+                  ? totalWeight.toFixed(1)
                   : "0"}
               </strong>
 
@@ -765,14 +652,10 @@ export default function Home() {
         </div>
       </section>
 
-      {/* =========================
-          BOTTOM NAV
-      ========================= */}
+      {/* BOTTOM NAV */}
 
       <nav style={styles.nav}>
-        <button
-          style={styles.navActive}
-        >
+        <button style={styles.navActive}>
           <Fish size={20} />
           <span>Feed</span>
         </button>
@@ -788,33 +671,23 @@ export default function Home() {
           <span>Fishing</span>
         </button>
 
-        <button
-          style={styles.navItem}
-        >
+        <button style={styles.navItem}>
           <Trophy size={20} />
           <span>Leaders</span>
         </button>
 
-        <button
-          style={styles.navItem}
-        >
+        <button style={styles.navItem}>
           <Users size={20} />
           <span>Family</span>
         </button>
       </nav>
 
-      {/* =========================
-          POST MODAL
-      ========================= */}
+      {/* POST MODAL */}
 
       {showPost && (
         <div
-          style={
-            styles.modalBackground
-          }
-          onClick={() =>
-            setShowPost(false)
-          }
+          style={styles.modalBackground}
+          onClick={() => setShowPost(false)}
         >
           <div
             style={styles.modal}
@@ -822,25 +695,13 @@ export default function Home() {
               event.stopPropagation()
             }
           >
-            <div
-              style={
-                styles.modalHeader
-              }
-            >
+            <div style={styles.modalHeader}>
               <div>
-                <div
-                  style={
-                    styles.modalEyebrow
-                  }
-                >
+                <div style={styles.modalEyebrow}>
                   NEW CATCH
                 </div>
 
-                <h2
-                  style={
-                    styles.modalTitle
-                  }
-                >
+                <h2 style={styles.modalTitle}>
                   Post Your Fish
                 </h2>
               </div>
@@ -849,9 +710,7 @@ export default function Home() {
                 onClick={() =>
                   setShowPost(false)
                 }
-                style={
-                  styles.closeButton
-                }
+                style={styles.closeButton}
               >
                 <X size={20} />
               </button>
@@ -861,9 +720,7 @@ export default function Home() {
               <input
                 value={name}
                 onChange={(event) =>
-                  setName(
-                    event.target.value
-                  )
+                  setName(event.target.value)
                 }
                 placeholder="Your name"
                 style={styles.input}
@@ -880,11 +737,7 @@ export default function Home() {
                 style={styles.input}
               />
 
-              <div
-                style={
-                  styles.twoInputs
-                }
-              >
+              <div style={styles.twoInputs}>
                 <input
                   value={length}
                   onChange={(event) =>
@@ -913,9 +766,7 @@ export default function Home() {
               <input
                 value={lake}
                 onChange={(event) =>
-                  setLake(
-                    event.target.value
-                  )
+                  setLake(event.target.value)
                 }
                 placeholder="Lake"
                 style={styles.input}
@@ -936,18 +787,13 @@ export default function Home() {
                 }}
               />
 
-              <label
-                style={
-                  styles.photoUpload
-                }
-              >
+              <label style={styles.photoUpload}>
                 <Camera size={19} />
 
                 <span>
                   {photos.length > 0
                     ? `${photos.length} photo${
-                        photos.length ===
-                        1
+                        photos.length === 1
                           ? ""
                           : "s"
                       } selected`
@@ -961,13 +807,10 @@ export default function Home() {
                   style={{
                     display: "none",
                   }}
-                  onChange={(
-                    event
-                  ) => {
+                  onChange={(event) => {
                     const files =
                       Array.from(
-                        event.target
-                          .files || []
+                        event.target.files || []
                       );
 
                     setPhotos(files);
@@ -976,21 +819,12 @@ export default function Home() {
               </label>
 
               {photos.length > 0 && (
-                <div
-                  style={
-                    styles.selectedPhotos
-                  }
-                >
+                <div style={styles.selectedPhotos}>
                   {photos.map(
-                    (
-                      photo,
-                      index
-                    ) => (
+                    (photo, index) => (
                       <div
                         key={`${photo.name}-${index}`}
-                        style={
-                          styles.selectedPhoto
-                        }
+                        style={styles.selectedPhoto}
                       >
                         <span>
                           {photo.name}
@@ -1006,9 +840,7 @@ export default function Home() {
                 disabled={posting}
                 style={{
                   ...styles.submitButton,
-                  opacity: posting
-                    ? 0.6
-                    : 1,
+                  opacity: posting ? 0.6 : 1,
                 }}
               >
                 {posting
@@ -1020,102 +852,71 @@ export default function Home() {
         </div>
       )}
 
-      {/* =========================
-          PHOTO VIEWER
-      ========================= */}
+      {/* PHOTO VIEWER */}
 
       {viewerCatch && (
         <div
-          style={
-            styles.viewerBackground
-          }
+          style={styles.viewerBackground}
           onClick={closeViewer}
         >
-          <div
-            style={
-              styles.viewerTop
-            }
-          >
-            <div
-              style={
-                styles.viewerTitle
-              }
-            >
+          <div style={styles.viewerTop}>
+            <div style={styles.viewerTitle}>
               {viewerCatch.fish_species}
             </div>
 
             <button
               onClick={closeViewer}
-              style={
-                styles.viewerClose
-              }
+              style={styles.viewerClose}
             >
               <X size={22} />
             </button>
           </div>
 
           <div
-            style={
-              styles.viewerImageArea
-            }
+            style={styles.viewerImageArea}
             onClick={(event) =>
               event.stopPropagation()
             }
           >
-            {getPhotos(
-              viewerCatch
-            ).length > 1 && (
+            {getPhotos(viewerCatch).length >
+              1 && (
               <button
-                onClick={
-                  goToPreviousPhoto
-                }
-                style={
-                  styles.viewerArrowLeft
-                }
+                onClick={goToPreviousPhoto}
+                style={styles.viewerArrowLeft}
               >
-                <ChevronLeft
-                  size={28}
-                />
+                <ChevronLeft size={28} />
               </button>
             )}
 
-            <img
-              src={
-                getPhotos(
-                  viewerCatch
-                )[viewerPhotoIndex]
-              }
-              alt={
-                viewerCatch.fish_species
-              }
-              style={{
-                ...styles.viewerImage,
-                transform: `scale(${zoom})`,
-              }}
-            />
+            {getPhotos(viewerCatch).length >
+              0 && (
+              <img
+                src={
+                  getPhotos(viewerCatch)[
+                    viewerPhotoIndex
+                  ]
+                }
+                alt={viewerCatch.fish_species}
+                style={{
+                  ...styles.viewerImage,
+                  transform: `scale(${zoom})`,
+                }}
+              />
+            )}
 
-            {getPhotos(
-              viewerCatch
-            ).length > 1 && (
+            {getPhotos(viewerCatch).length >
+              1 && (
               <button
-                onClick={
-                  goToNextPhoto
-                }
-                style={
-                  styles.viewerArrowRight
-                }
+                onClick={goToNextPhoto}
+                style={styles.viewerArrowRight}
               >
-                <ChevronRight
-                  size={28}
-                />
+                <ChevronRight size={28} />
               </button>
             )}
           </div>
 
           <div
-            style={
-              styles.viewerControls
-            }
+            style={styles.viewerControls}
             onClick={(event) =>
               event.stopPropagation()
             }
@@ -1129,33 +930,20 @@ export default function Home() {
                   )
                 )
               }
-              style={
-                styles.viewerControl
-              }
+              style={styles.viewerControl}
             >
               <ZoomOut size={19} />
             </button>
 
             <button
-              onClick={() =>
-                setZoom(1)
-              }
-              style={
-                styles.viewerControl
-              }
+              onClick={() => setZoom(1)}
+              style={styles.viewerControl}
             >
               <RotateCcw size={18} />
             </button>
 
-            <div
-              style={
-                styles.zoomText
-              }
-            >
-              {Math.round(
-                zoom * 100
-              )}
-              %
+            <div style={styles.zoomText}>
+              {Math.round(zoom * 100)}%
             </div>
 
             <button
@@ -1167,42 +955,24 @@ export default function Home() {
                   )
                 )
               }
-              style={
-                styles.viewerControl
-              }
+              style={styles.viewerControl}
             >
               <ZoomIn size={19} />
             </button>
           </div>
 
-          <div
-            style={
-              styles.viewerCounter
-            }
-          >
+          <div style={styles.viewerCounter}>
             {viewerPhotoIndex + 1} /{" "}
-            {getPhotos(
-              viewerCatch
-            ).length}
+            {getPhotos(viewerCatch).length}
           </div>
         </div>
       )}
 
-      {/* =========================
-          CELEBRATION
-      ========================= */}
+      {/* CELEBRATION */}
 
       {celebrating && (
-        <div
-          style={
-            styles.celebration
-          }
-        >
-          <div
-            style={
-              styles.bubble b
-            }
-          />
+        <div style={styles.celebration}>
+          <div style={styles.bubble} />
         </div>
       )}
     </main>
@@ -1215,7 +985,7 @@ export default function Home() {
 
 const styles: Record<
   string,
-  React.CSSProperties
+  CSSProperties
 > = {
   page: {
     minHeight: "100vh",
@@ -1292,19 +1062,12 @@ const styles: Record<
     height: "125px",
     objectFit: "contain",
     display: "block",
-
-    /*
-      Makes the existing loon neutral.
-      This removes the bright colors from the
-      original image without needing another asset.
-    */
     filter:
       "grayscale(1) brightness(1.35) contrast(0.9)",
   },
 
   title: {
-    margin:
-      "18px 0 0",
+    margin: "18px 0 0",
     fontSize:
       "clamp(42px, 9vw, 70px)",
     lineHeight: 0.95,
@@ -1314,8 +1077,7 @@ const styles: Record<
   },
 
   subtitle: {
-    margin:
-      "14px 0 0",
+    margin: "14px 0 0",
     fontSize: "15px",
     color:
       "rgba(241,238,230,0.72)",
@@ -1377,7 +1139,8 @@ const styles: Record<
     width: "100%",
     marginTop: "10px",
     padding: "15px",
-    border: "1px solid rgba(241,238,230,0.15)",
+    border:
+      "1px solid rgba(241,238,230,0.15)",
     borderRadius: "13px",
     display: "flex",
     alignItems: "center",
@@ -1621,10 +1384,6 @@ const styles: Record<
     cursor: "pointer",
   },
 
-  /* =========================
-     TRIP STATS
-  ========================= */
-
   tripCard: {
     marginTop: "30px",
     padding: "21px",
@@ -1689,10 +1448,6 @@ const styles: Record<
       "rgba(241,238,230,0.11)",
   },
 
-  /* =========================
-     NAV
-  ========================= */
-
   nav: {
     position: "fixed",
     zIndex: 80,
@@ -1736,10 +1491,6 @@ const styles: Record<
     fontWeight: 700,
     cursor: "pointer",
   },
-
-  /* =========================
-     MODAL
-  ========================= */
 
   modalBackground: {
     position: "fixed",
@@ -1873,10 +1624,6 @@ const styles: Record<
     fontWeight: 800,
     cursor: "pointer",
   },
-
-  /* =========================
-     PHOTO VIEWER
-  ========================= */
 
   viewerBackground: {
     position: "fixed",
@@ -2017,10 +1764,6 @@ const styles: Record<
     fontSize: "11px",
   },
 
-  /* =========================
-     CELEBRATION
-  ========================= */
-
   celebration: {
     position: "fixed",
     inset: 0,
@@ -2044,7 +1787,7 @@ const styles: Record<
 };
 
 /*
-  Small animation for the catch-post celebration.
+  Global styles and animation.
 */
 
 if (
