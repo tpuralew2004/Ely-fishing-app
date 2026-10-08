@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Camera,
   Fish,
@@ -17,7 +17,7 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
-  Image as ImageIcon,
+  Scale,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 
@@ -33,39 +33,30 @@ type Catch = {
   created_at: string;
 };
 
-type ViewerState = {
-  item: Catch;
-  photos: string[];
-  index: number;
-};
-
 const colors = {
-  forest: "#173A2A",
-  darkForest: "#0C2118",
-  deepest: "#07130E",
-  lake: "#2D7C91",
-  lakeLight: "#72B7C4",
-  cream: "#F4EFE3",
-  warmWhite: "#FFFDF7",
-  gold: "#D9A441",
-  orange: "#C96A3D",
-  red: "#B94A42",
-  textDark: "#18241D",
-  muted: "#68746B",
-  line: "#D8D1C2",
+  forest: "#173D2D",
+  deepForest: "#0D241A",
+  pine: "#24553D",
+  lake: "#2E7180",
+  water: "#5FA9B5",
+  cream: "#F4F0E6",
+  paper: "#FFFDF7",
+  gold: "#D7A928",
+  orange: "#D66B3D",
+  dark: "#16211B",
+  muted: "#6F776F",
+  white: "#FFFFFF",
+  danger: "#B94A48",
 };
 
-const BUBBLES = Array.from({ length: 22 }, (_, index) => ({
-  left: `${(index * 17) % 97}%`,
-  delay: `${(index % 7) * 0.13}s`,
-  duration: `${2.1 + (index % 5) * 0.28}s`,
-  size: `${10 + (index % 5) * 5}px`,
-  drift: `${-25 + (index % 7) * 9}px`,
+const bubbleValues = Array.from({ length: 22 }, (_, index) => ({
+  left: `${4 + ((index * 17) % 92)}%`,
+  size: `${10 + ((index * 7) % 16)}px`,
+  delay: `${(index * 0.13).toFixed(2)}s`,
+  duration: `${1.7 + ((index * 11) % 13) / 10}s`,
 }));
 
-function getPhotoUrls(
-  imageUrl: string | null | undefined
-): string[] {
+function getPhotoUrls(imageUrl: string | null | undefined): string[] {
   if (!imageUrl) return [];
 
   try {
@@ -73,53 +64,31 @@ function getPhotoUrls(
 
     if (
       Array.isArray(parsed) &&
-      parsed.every(
-        (value) => typeof value === "string"
-      )
+      parsed.every((value) => typeof value === "string")
     ) {
       return parsed;
     }
   } catch {
-    // Old posts contain one normal URL.
+    // Old posts contain a normal URL rather than JSON.
   }
 
   return [imageUrl];
 }
 
-function formatTimeAgo(dateString: string) {
-  const date = new Date(dateString);
+function formatWeight(value: number | null) {
+  if (value === null || Number.isNaN(value)) return null;
 
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
+  return Number.isInteger(value)
+    ? `${value} lbs`
+    : `${value.toFixed(1)} lbs`;
+}
 
-  const seconds = Math.floor(
-    (Date.now() - date.getTime()) / 1000
-  );
+function formatLength(value: number | null) {
+  if (value === null || Number.isNaN(value)) return null;
 
-  if (seconds < 60) {
-    return "Just now";
-  }
-
-  const minutes = Math.floor(seconds / 60);
-
-  if (minutes < 60) {
-    return `${minutes}m ago`;
-  }
-
-  const hours = Math.floor(minutes / 60);
-
-  if (hours < 24) {
-    return `${hours}h ago`;
-  }
-
-  const days = Math.floor(hours / 24);
-
-  if (days < 7) {
-    return `${days}d ago`;
-  }
-
-  return date.toLocaleDateString();
+  return Number.isInteger(value)
+    ? `${value}"`
+    : `${value.toFixed(1)}"`;
 }
 
 export default function Home() {
@@ -133,86 +102,28 @@ export default function Home() {
   const [fishSpecies, setFishSpecies] = useState("");
   const [length, setLength] = useState("");
   const [weight, setWeight] = useState("");
-  const [lake, setLake] =
-    useState("White Iron Lake");
+  const [lake, setLake] = useState("White Iron Lake");
   const [caption, setCaption] = useState("");
 
-  const [photoFiles, setPhotoFiles] = useState<File[]>(
-    []
-  );
+  const [photoFiles, setPhotoFiles] = useState<File[]>([]);
+  const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
 
-  const [photoPreviews, setPhotoPreviews] =
-    useState<string[]>([]);
-
-  const [viewer, setViewer] =
-    useState<ViewerState | null>(null);
-
+  const [viewerCatch, setViewerCatch] = useState<Catch | null>(null);
+  const [viewerPhotoIndex, setViewerPhotoIndex] = useState(0);
   const [zoom, setZoom] = useState(1);
 
-  const [celebrateId, setCelebrateId] =
-    useState<number | null>(null);
+  const [celebrateId, setCelebrateId] = useState<number | null>(null);
 
-  useEffect(() => {
-    loadCatches();
-  }, []);
+  const totalWeight = useMemo(() => {
+    return catches.reduce((total, item) => {
+      return total + (item.weight ?? 0);
+    }, 0);
+  }, [catches]);
 
-  useEffect(() => {
-    return () => {
-      photoPreviews.forEach((url) =>
-        URL.revokeObjectURL(url)
-      );
-    };
-  }, [photoPreviews]);
-
-  useEffect(() => {
-    if (celebrateId === null) return;
-
-    const timer = window.setTimeout(() => {
-      setCelebrateId(null);
-    }, 3000);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [celebrateId]);
-
-  useEffect(() => {
-    if (!viewer) return;
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        closeViewer();
-      }
-
-      if (event.key === "ArrowLeft") {
-        previousPhoto();
-      }
-
-      if (event.key === "ArrowRight") {
-        nextPhoto();
-      }
-
-      if (event.key === "+") {
-        zoomIn();
-      }
-
-      if (event.key === "-") {
-        zoomOut();
-      }
-    }
-
-    window.addEventListener(
-      "keydown",
-      handleKeyDown
-    );
-
-    return () => {
-      window.removeEventListener(
-        "keydown",
-        handleKeyDown
-      );
-    };
-  }, [viewer]);
+  const fishermen = useMemo(() => {
+    return new Set(catches.map((item) => item.name.trim()).filter(Boolean))
+      .size;
+  }, [catches]);
 
   async function loadCatches() {
     setLoading(true);
@@ -220,124 +131,104 @@ export default function Home() {
     const { data, error } = await supabase
       .from("catches")
       .select("*")
-      .order("created_at", {
-        ascending: false,
-      });
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error loading catches:", error);
+    }
 
     if (!error && data) {
       setCatches(data as Catch[]);
-    } else if (error) {
-      console.error(
-        "Could not load catches:",
-        error
-      );
     }
 
     setLoading(false);
   }
 
-  function resetPostForm() {
-    setName("");
-    setFishSpecies("");
-    setLength("");
-    setWeight("");
-    setLake("White Iron Lake");
-    setCaption("");
-    setPhotoFiles([]);
+  useEffect(() => {
+    loadCatches();
+  }, []);
 
-    photoPreviews.forEach((url) =>
-      URL.revokeObjectURL(url)
-    );
+  useEffect(() => {
+    if (photoFiles.length === 0) {
+      setPhotoPreviews([]);
+      return;
+    }
 
-    setPhotoPreviews([]);
-  }
+    const urls = photoFiles.map((file) => URL.createObjectURL(file));
 
-  function closePostModal() {
-    if (posting) return;
+    setPhotoPreviews(urls);
 
-    resetPostForm();
-    setShowPost(false);
-  }
+    return () => {
+      urls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [photoFiles]);
 
-  function handlePhotoChange(
+  useEffect(() => {
+    if (celebrateId === null) return;
+
+    const timer = window.setTimeout(() => {
+      setCelebrateId(null);
+    }, 3200);
+
+    return () => window.clearTimeout(timer);
+  }, [celebrateId]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (!viewerCatch) return;
+
+      if (event.key === "Escape") {
+        closeViewer();
+      }
+
+      if (event.key === "ArrowRight") {
+        goToNextPhoto();
+      }
+
+      if (event.key === "ArrowLeft") {
+        goToPreviousPhoto();
+      }
+
+      if (event.key === "+") {
+        setZoom((current) => Math.min(3, current + 0.25));
+      }
+
+      if (event.key === "-") {
+        setZoom((current) => Math.max(0.5, current - 0.25));
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [viewerCatch, viewerPhotoIndex]);
+
+  function handlePhotoSelection(
     event: React.ChangeEvent<HTMLInputElement>
   ) {
-    const files = Array.from(
-      event.target.files || []
-    );
+    const files = Array.from(event.target.files ?? []);
 
-    if (files.length === 0) return;
-
-    const imageFiles = files.filter((file) =>
-      file.type.startsWith("image/")
-    );
-
-    if (imageFiles.length === 0) {
-      alert("Please choose image files.");
+    if (files.length === 0) {
+      setPhotoFiles([]);
       return;
     }
 
-    if (imageFiles.length > 8) {
-      alert(
-        "You can add up to 8 photos to one catch."
-      );
-      return;
-    }
-
-    photoPreviews.forEach((url) =>
-      URL.revokeObjectURL(url)
-    );
-
-    const previews = imageFiles.map((file) =>
-      URL.createObjectURL(file)
-    );
-
-    setPhotoFiles(imageFiles);
-    setPhotoPreviews(previews);
+    setPhotoFiles(files);
   }
 
   function removeSelectedPhoto(index: number) {
-    const newFiles = photoFiles.filter(
-      (_, photoIndex) => photoIndex !== index
+    setPhotoFiles((current) =>
+      current.filter((_, photoIndex) => photoIndex !== index)
     );
-
-    const newPreviews = photoPreviews.filter(
-      (_, photoIndex) => photoIndex !== index
-    );
-
-    if (photoPreviews[index]) {
-      URL.revokeObjectURL(
-        photoPreviews[index]
-      );
-    }
-
-    setPhotoFiles(newFiles);
-    setPhotoPreviews(newPreviews);
   }
 
   async function postCatch() {
-    if (
-      !name.trim() ||
-      !fishSpecies.trim() ||
-      !length.trim() ||
-      !lake.trim()
-    ) {
+    if (!name || !fishSpecies || !length || !lake) {
       alert(
         "Please enter your name, fish species, length, and lake."
       );
-      return;
-    }
-
-    if (Number(length) <= 0) {
-      alert("Please enter a valid fish length.");
-      return;
-    }
-
-    if (
-      weight &&
-      Number(weight) < 0
-    ) {
-      alert("Please enter a valid fish weight.");
       return;
     }
 
@@ -348,25 +239,17 @@ export default function Home() {
 
       for (const photo of photoFiles) {
         const extension =
-          photo.name.split(".").pop() ||
-          "jpg";
+          photo.name.split(".").pop()?.toLowerCase() || "jpg";
 
-        const fileName =
-          `${Date.now()}-${Math.random()
-            .toString(36)
-            .substring(2)}.${extension}`;
+        const fileName = `${Date.now()}-${Math.random()
+          .toString(36)
+          .substring(2)}.${extension}`;
 
-        const filePath =
-          `private/${fileName}`;
+        const filePath = `private/${fileName}`;
 
-        const {
-          error: uploadError,
-        } = await supabase.storage
+        const { error: uploadError } = await supabase.storage
           .from("catch-photos")
-          .upload(
-            filePath,
-            photo
-          );
+          .upload(filePath, photo);
 
         if (uploadError) {
           throw uploadError;
@@ -375,50 +258,46 @@ export default function Home() {
         const {
           data: signedData,
           error: signedError,
-        } =
-          await supabase.storage
-            .from("catch-photos")
-            .createSignedUrl(
-              filePath,
-              60 * 60 * 24 * 365
-            );
+        } = await supabase.storage
+          .from("catch-photos")
+          .createSignedUrl(
+            filePath,
+            60 * 60 * 24 * 365
+          );
 
-        if (signedError) {
-          throw signedError;
+        if (signedError || !signedData?.signedUrl) {
+          throw signedError || new Error("Could not create photo URL.");
         }
 
-        uploadedUrls.push(
-          signedData.signedUrl
-        );
+        uploadedUrls.push(signedData.signedUrl);
       }
 
-      let imageUrl: string | null = null;
+      /*
+        IMPORTANT:
 
-      if (uploadedUrls.length === 1) {
-        imageUrl = uploadedUrls[0];
-      }
+        We are keeping your existing image_url column.
 
-      if (uploadedUrls.length > 1) {
-        imageUrl =
-          JSON.stringify(uploadedUrls);
-      }
+        - Old posts can still contain one normal URL.
+        - New posts store multiple URLs as a JSON array.
 
-      const {
-        data,
-        error,
-      } = await supabase
+        Example:
+        ["url1", "url2", "url3"]
+      */
+
+      const imageUrl =
+        uploadedUrls.length > 0
+          ? JSON.stringify(uploadedUrls)
+          : null;
+
+      const { data: insertedCatch, error } = await supabase
         .from("catches")
         .insert({
-          name: name.trim(),
-          fish_species:
-            fishSpecies.trim(),
+          name,
+          fish_species: fishSpecies,
           length: Number(length),
-          weight: weight
-            ? Number(weight)
-            : null,
-          lake: lake.trim(),
-          caption:
-            caption.trim() || null,
+          weight: weight ? Number(weight) : null,
+          lake,
+          caption: caption || null,
           image_url: imageUrl,
         })
         .select()
@@ -428,371 +307,166 @@ export default function Home() {
         throw error;
       }
 
-      if (data) {
-        const newCatch =
-          data as Catch;
+      const newCatch = insertedCatch as Catch;
 
-        setCatches((current) => [
-          newCatch,
-          ...current,
-        ]);
+      setCatches((current) => [
+        newCatch,
+        ...current,
+      ]);
 
-        setCelebrateId(
-          newCatch.id
-        );
-      }
+      setName("");
+      setFishSpecies("");
+      setLength("");
+      setWeight("");
+      setLake("White Iron Lake");
+      setCaption("");
+      setPhotoFiles([]);
+      setPhotoPreviews([]);
 
-      resetPostForm();
       setShowPost(false);
+
+      setCelebrateId(newCatch.id);
     } catch (error) {
-      console.error(
-        "Posting error:",
-        error
-      );
+      console.error("Error posting catch:", error);
 
       alert(
-        "Something went wrong posting the catch."
+        "Something went wrong posting the catch. Please try again."
       );
     } finally {
       setPosting(false);
     }
   }
 
-  async function deleteCatch(
-    id: number
-  ) {
-    const confirmed =
-      window.confirm(
-        "Are you sure you want to delete this catch?"
-      );
+  async function deleteCatch(catchId: number) {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this catch?"
+    );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     try {
-      const {
-        error,
-      } = await supabase
+      const { error } = await supabase
         .from("catches")
         .delete()
-        .eq("id", id);
+        .eq("id", catchId);
 
       if (error) {
-        throw error;
+        console.error("Delete error:", error);
+
+        alert(
+          "Something went wrong deleting the catch."
+        );
+
+        return;
       }
 
       setCatches((current) =>
-        current.filter(
-          (item) => item.id !== id
-        )
+        current.filter((item) => item.id !== catchId)
       );
-
-      if (
-        viewer &&
-        viewer.item.id === id
-      ) {
-        setViewer(null);
-      }
     } catch (error) {
-      console.error(
-        "Delete error:",
-        error
-      );
+      console.error(error);
 
       alert(
-        "Something went wrong deleting the catch. Supabase may need a DELETE policy."
+        "Something went wrong deleting the catch."
       );
     }
   }
 
-  function openViewer(
-    item: Catch,
-    index = 0
-  ) {
-    const photos =
-      getPhotoUrls(
-        item.image_url
-      );
-
-    if (photos.length === 0) {
-      return;
-    }
-
-    setViewer({
-      item,
-      photos,
-      index,
-    });
-
+  function openViewer(item: Catch, photoIndex = 0) {
+    setViewerCatch(item);
+    setViewerPhotoIndex(photoIndex);
     setZoom(1);
   }
 
   function closeViewer() {
-    setViewer(null);
+    setViewerCatch(null);
+    setViewerPhotoIndex(0);
     setZoom(1);
   }
 
-  function previousPhoto() {
-    if (!viewer) return;
+  function goToNextPhoto() {
+    if (!viewerCatch) return;
 
-    const newIndex =
-      viewer.index === 0
-        ? viewer.photos.length - 1
-        : viewer.index - 1;
+    const photos = getPhotoUrls(viewerCatch.image_url);
 
-    setViewer({
-      ...viewer,
-      index: newIndex,
-    });
+    if (photos.length <= 1) return;
 
-    setZoom(1);
-  }
-
-  function nextPhoto() {
-    if (!viewer) return;
-
-    const newIndex =
-      viewer.index ===
-      viewer.photos.length - 1
-        ? 0
-        : viewer.index + 1;
-
-    setViewer({
-      ...viewer,
-      index: newIndex,
-    });
-
-    setZoom(1);
-  }
-
-  function zoomIn() {
-    setZoom((current) =>
-      Math.min(current + 0.25, 3)
+    setViewerPhotoIndex((current) =>
+      current >= photos.length - 1 ? 0 : current + 1
     );
+
+    setZoom(1);
   }
 
-  function zoomOut() {
-    setZoom((current) =>
-      Math.max(current - 0.25, 0.5)
+  function goToPreviousPhoto() {
+    if (!viewerCatch) return;
+
+    const photos = getPhotoUrls(viewerCatch.image_url);
+
+    if (photos.length <= 1) return;
+
+    setViewerPhotoIndex((current) =>
+      current <= 0 ? photos.length - 1 : current - 1
     );
+
+    setZoom(1);
   }
 
   function resetZoom() {
     setZoom(1);
   }
 
-  function handleImageWheel(
-    event: React.WheelEvent
-  ) {
-    event.preventDefault();
-
-    if (event.deltaY < 0) {
-      zoomIn();
-    } else {
-      zoomOut();
-    }
+  function changeZoom(amount: number) {
+    setZoom((current) =>
+      Math.min(3, Math.max(0.5, current + amount))
+    );
   }
 
   return (
     <main style={styles.page}>
-      <style>{`
-        * {
-          box-sizing: border-box;
-        }
-
-        html {
-          scroll-behavior: smooth;
-        }
-
-        body {
-          margin: 0;
-          background: ${colors.deepest};
-        }
-
-        button,
-        input,
-        textarea {
-          font-family: inherit;
-        }
-
-        button {
-          -webkit-tap-highlight-color: transparent;
-        }
-
-        .ely-post-button:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 14px 30px rgba(201,106,61,0.32) !important;
-        }
-
-        .ely-photo:hover img {
-          transform: scale(1.015);
-        }
-
-        .ely-delete:hover {
-          background: rgba(185,74,66,0.14) !important;
-          border-color: rgba(185,74,66,0.4) !important;
-        }
-
-        .ely-thumbnail:hover {
-          transform: translateY(-2px);
-          opacity: 1 !important;
-        }
-
-        .ely-nav-button:hover {
-          color: ${colors.gold} !important;
-        }
-
-        @keyframes bubbleRise {
-          0% {
-            opacity: 0;
-            transform: translate3d(0, 45px, 0) scale(0.5);
-          }
-
-          15% {
-            opacity: 0.9;
-          }
-
-          75% {
-            opacity: 0.65;
-          }
-
-          100% {
-            opacity: 0;
-            transform:
-              translate3d(var(--drift), -260px, 0)
-              scale(1.1);
-          }
-        }
-
-        @keyframes newCatchGlow {
-          0% {
-            box-shadow:
-              0 0 0 rgba(217,164,65,0),
-              0 12px 35px rgba(0,0,0,0.18);
-          }
-
-          30% {
-            box-shadow:
-              0 0 35px rgba(217,164,65,0.45),
-              0 12px 35px rgba(0,0,0,0.18);
-          }
-
-          100% {
-            box-shadow:
-              0 0 0 rgba(217,164,65,0),
-              0 12px 35px rgba(0,0,0,0.18);
-          }
-        }
-
-        @keyframes softPulse {
-          0%, 100% {
-            transform: scale(1);
-          }
-
-          50% {
-            transform: scale(1.04);
-          }
-        }
-
-        @media (max-width: 600px) {
-          .hero-title {
-            font-size: 44px !important;
-          }
-
-          .catch-stats {
-            grid-template-columns: 1fr !important;
-            gap: 12px !important;
-          }
-
-          .catch-stat {
-            padding-bottom: 10px !important;
-            border-bottom: 1px solid ${colors.line};
-          }
-
-          .catch-stat:last-child {
-            border-bottom: none;
-            padding-bottom: 0 !important;
-          }
-
-          .bottom-nav {
-            gap: 26px !important;
-          }
-
-          .viewer-info {
-            max-height: 34vh !important;
-          }
-        }
-
-        @media (min-width: 800px) {
-          .feed-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 18px;
-          }
-
-          .feed-grid > article {
-            margin-bottom: 0 !important;
-          }
-
-          .feed-grid > article:first-child {
-            grid-column: 1 / -1;
-          }
-        }
-      `}</style>
-
-      {/* =========================
+      {/* =====================================================
           HERO
-      ========================= */}
+      ====================================================== */}
 
       <section style={styles.hero}>
         <div style={styles.heroImage} />
-
-        <div style={styles.heroOverlay} />
+        <div style={styles.heroDark} />
 
         <div style={styles.heroContent}>
-          <div style={styles.heroTopLabel}>
-            FAMILY FISHING JOURNAL
-          </div>
+          {/* LOGO */}
 
-          {/* LOGO — NO CIRCLE */}
-          <div style={styles.fishLogo}>
+          <div style={styles.logoArea}>
             <img
               src="/loon-logo.png.png"
-              alt="Ely Fishing loon logo"
-              style={styles.logoImage}
+              alt="Ely Anglers loon logo"
+              style={styles.heroLogo}
             />
           </div>
 
-          <h1
-            className="hero-title"
-            style={styles.title}
-          >
-            Ely Fishing
-          </h1>
+          {/* TITLE */}
 
-          <p style={styles.subtitle}>
-            White Iron Lake • Northern Minnesota
-          </p>
+          <div style={styles.heroTitleArea}>
+            <div style={styles.eyebrow}>
+              FAMILY FISHING TRIP
+            </div>
 
-          <div style={styles.heroRule}>
-            <span />
-            <span style={styles.heroRuleDot}>
-              •
-            </span>
-            <span />
+            <h1 style={styles.title}>
+              Ely Anglers
+            </h1>
+
+            <p style={styles.subtitle}>
+              White Iron Lake • Minnesota
+            </p>
           </div>
+
+          {/* LOCATION */}
 
           <div style={styles.locationCard}>
             <div style={styles.locationIcon}>
-              <MapPin size={21} />
+              <MapPin size={23} />
             </div>
 
             <div>
-              <div style={styles.locationLabel}>
-                FISHING SPOT
-              </div>
-
               <div style={styles.locationTitle}>
                 White Iron Lake
               </div>
@@ -803,25 +477,80 @@ export default function Home() {
             </div>
           </div>
 
+          {/* POST BUTTON */}
+
           <button
-            className="ely-post-button"
-            onClick={() =>
-              setShowPost(true)
-            }
+            onClick={() => setShowPost(true)}
             style={styles.postButton}
           >
-            <Plus size={21} />
+            <Plus size={22} />
             Post a Catch
           </button>
         </div>
       </section>
 
-      {/* =========================
+      {/* =====================================================
+          STICKY TRIP SUMMARY
+      ====================================================== */}
+
+      <div style={styles.stickyStatsWrapper}>
+        <div style={styles.stickyStats}>
+          <div style={styles.stickyStat}>
+            <div style={styles.stickyIcon}>
+              <Fish size={17} />
+            </div>
+
+            <div>
+              <strong>
+                {catches.length}
+              </strong>
+
+              <span>CATCHES</span>
+            </div>
+          </div>
+
+          <div style={styles.statDivider} />
+
+          <div style={styles.stickyStat}>
+            <div style={styles.stickyIcon}>
+              <Users size={17} />
+            </div>
+
+            <div>
+              <strong>
+                {fishermen}
+              </strong>
+
+              <span>FISHERMEN</span>
+            </div>
+          </div>
+
+          <div style={styles.statDivider} />
+
+          <div style={styles.stickyStat}>
+            <div style={styles.stickyIcon}>
+              <Scale size={17} />
+            </div>
+
+            <div>
+              <strong>
+                {totalWeight % 1 === 0
+                  ? totalWeight
+                  : totalWeight.toFixed(1)}
+              </strong>
+
+              <span>LBS</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* =====================================================
           FEED
-      ========================= */}
+      ====================================================== */}
 
       <section style={styles.feed}>
-        <div style={styles.feedIntro}>
+        <div style={styles.sectionHeader}>
           <div>
             <div style={styles.sectionEyebrow}>
               THE CATCH BOARD
@@ -831,563 +560,369 @@ export default function Home() {
               Recent Catches
             </h2>
 
-            <p style={styles.sectionDescription}>
-              The newest fish are always at the top.
+            <p style={styles.sectionSubtext}>
+              Newest catches appear first
             </p>
           </div>
 
-          <div style={styles.fishBadge}>
-            <Fish size={23} />
-          </div>
+          <Fish
+            size={30}
+            color={colors.gold}
+          />
         </div>
 
         {loading && (
           <div style={styles.loadingCard}>
+            Loading catches...
+          </div>
+        )}
+
+        {!loading && catches.length === 0 && (
+          <div style={styles.emptyCard}>
             <Fish
-              size={30}
-              style={{
-                animation:
-                  "softPulse 1.2s infinite",
-              }}
+              size={42}
+              color={colors.gold}
             />
 
-            <span>
-              Loading the catch board...
-            </span>
+            <h3 style={styles.emptyTitle}>
+              No catches yet
+            </h3>
+
+            <p style={styles.emptyText}>
+              Be the first person to post a fish!
+            </p>
           </div>
         )}
 
         {!loading &&
-          catches.length === 0 && (
-            <div style={styles.emptyCard}>
-              <div style={styles.emptyIcon}>
-                <Fish size={42} />
-              </div>
+          catches.map((item) => {
+            const photos = getPhotoUrls(item.image_url);
+            const isCelebrating =
+              celebrateId === item.id;
 
-              <h3 style={styles.emptyTitle}>
-                No catches yet
-              </h3>
-
-              <p style={styles.emptyText}>
-                Be the first person to post
-                a fish from the trip.
-              </p>
-
-              <button
-                onClick={() =>
-                  setShowPost(true)
-                }
-                style={styles.emptyButton}
+            return (
+              <article
+                key={item.id}
+                style={{
+                  ...styles.catchCard,
+                  position: "relative",
+                }}
               >
-                <Plus size={18} />
-                Post the first catch
-              </button>
-            </div>
-          )}
+                {/* NEW CATCH BUBBLES */}
 
-        {!loading &&
-          catches.length > 0 && (
-            <div className="feed-grid">
-              {catches.map((item) => {
-                const photos =
-                  getPhotoUrls(
-                    item.image_url
-                  );
-
-                const isNew =
-                  celebrateId ===
-                  item.id;
-
-                return (
-                  <article
-                    key={item.id}
-                    style={{
-                      ...styles.catchCard,
-                      ...(isNew
-                        ? {
-                            animation:
-                              "newCatchGlow 3s ease-out",
-                          }
-                        : {}),
-                    }}
+                {isCelebrating && (
+                  <div
+                    style={
+                      styles.celebrationOverlay
+                    }
                   >
-                    {/* PHOTO AREA */}
-
-                    {photos.length > 0 && (
-                      <div
-                        className="ely-photo"
-                        style={
-                          styles.photoSection
-                        }
-                      >
-                        <button
-                          onClick={() =>
-                            openViewer(
-                              item,
-                              0
-                            )
-                          }
-                          style={
-                            styles.mainPhotoButton
-                          }
-                          aria-label="Open catch photo"
-                        >
-                          <img
-                            src={photos[0]}
-                            alt={`${item.fish_species} caught by ${item.name}`}
-                            style={
-                              styles.catchImage
-                            }
-                          />
-
-                          <div
-                            style={
-                              styles.photoOpenHint
-                            }
-                          >
-                            <ImageIcon
-                              size={16}
-                            />
-
-                            <span>
-                              Tap to enlarge
-                            </span>
-                          </div>
-                        </button>
-
-                        {photos.length > 1 && (
-                          <div
-                            style={
-                              styles.thumbnailRow
-                            }
-                          >
-                            {photos.map(
-                              (
-                                photoUrl,
-                                photoIndex
-                              ) => (
-                                <button
-                                  key={
-                                    photoIndex
-                                  }
-                                  className="ely-thumbnail"
-                                  onClick={() =>
-                                    openViewer(
-                                      item,
-                                      photoIndex
-                                    )
-                                  }
-                                  style={{
-                                    ...styles.thumbnail,
-                                    opacity:
-                                      photoIndex ===
-                                      0
-                                        ? 1
-                                        : 0.72,
-                                  }}
-                                >
-                                  <img
-                                    src={
-                                      photoUrl
-                                    }
-                                    alt={`Catch photo ${photoIndex + 1}`}
-                                    style={
-                                      styles.thumbnailImage
-                                    }
-                                  />
-
-                                  {photoIndex ===
-                                    0 && (
-                                    <span
-                                      style={
-                                        styles.coverPhotoLabel
-                                      }
-                                    >
-                                      Main
-                                    </span>
-                                  )}
-                                </button>
-                              )
-                            )}
-
-                            <span
-                              style={
-                                styles.photoCount
-                              }
-                            >
-                              {photos.length}{" "}
-                              photos
-                            </span>
-                          </div>
-                        )}
-                      </div>
+                    {bubbleValues.map(
+                      (bubble, index) => (
+                        <span
+                          key={index}
+                          style={{
+                            ...styles.bubble,
+                            left: bubble.left,
+                            width: bubble.size,
+                            height: bubble.size,
+                            animationDelay:
+                              bubble.delay,
+                            animationDuration:
+                              bubble.duration,
+                          }}
+                        />
+                      )
                     )}
-
-                    {/* BUBBLES */}
-
-                    {isNew && (
-                      <div
-                        style={
-                          styles.bubbleLayer
-                        }
-                        aria-hidden="true"
-                      >
-                        {BUBBLES.map(
-                          (
-                            bubble,
-                            index
-                          ) => (
-                            <span
-                              key={index}
-                              style={{
-                                ...styles.bubble,
-                                left:
-                                  bubble.left,
-                                width:
-                                  bubble.size,
-                                height:
-                                  bubble.size,
-                                animationDelay:
-                                  bubble.delay,
-                                animationDuration:
-                                  bubble.duration,
-                                "--drift":
-                                  bubble.drift,
-                              } as React.CSSProperties}
-                            />
-                          )
-                        )}
-                      </div>
-                    )}
-
-                    {/* CATCH CONTENT */}
 
                     <div
                       style={
-                        styles.catchContent
+                        styles.newCatchBadge
                       }
                     >
-                      <div
-                        style={
-                          styles.catchHeader
-                        }
-                      >
-                        <div>
-                          <div
-                            style={
-                              styles.catchPerson
-                            }
-                          >
-                            {item.name}
-                          </div>
-
-                          <h3
-                            style={
-                              styles.fishName
-                            }
-                          >
-                            {item.fish_species}
-                          </h3>
-                        </div>
-
-                        <div
-                          style={
-                            styles.catchActions
-                          }
-                        >
-                          <Fish
-                            size={22}
-                            color={
-                              colors.lake
-                            }
-                          />
-
-                          <button
-                            className="ely-delete"
-                            onClick={() =>
-                              deleteCatch(
-                                item.id
-                              )
-                            }
-                            style={
-                              styles.deleteButton
-                            }
-                            title="Delete catch"
-                            aria-label="Delete catch"
-                          >
-                            <Trash2
-                              size={17}
-                            />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* CLEAR METADATA */}
-
-                      <div
-                        className="catch-stats"
-                        style={
-                          styles.catchStats
-                        }
-                      >
-                        <div
-                          className="catch-stat"
-                          style={
-                            styles.catchStat
-                          }
-                        >
-                          <span
-                            style={
-                              styles.statLabel
-                            }
-                          >
-                            LENGTH
-                          </span>
-
-                          <strong
-                            style={
-                              styles.statValue
-                            }
-                          >
-                            {item.length} in
-                          </strong>
-                        </div>
-
-                        <div
-                          className="catch-stat"
-                          style={
-                            styles.catchStat
-                          }
-                        >
-                          <span
-                            style={
-                              styles.statLabel
-                            }
-                          >
-                            WEIGHT
-                          </span>
-
-                          <strong
-                            style={
-                              styles.statValue
-                            }
-                          >
-                            {item.weight !==
-                            null
-                              ? `${item.weight} lb`
-                              : "—"}
-                          </strong>
-                        </div>
-
-                        <div
-                          className="catch-stat"
-                          style={
-                            styles.catchStat
-                          }
-                        >
-                          <span
-                            style={
-                              styles.statLabel
-                            }
-                          >
-                            LAKE
-                          </span>
-
-                          <strong
-                            style={{
-                              ...styles.statValue,
-                              color:
-                                colors.lake,
-                            }}
-                          >
-                            {item.lake}
-                          </strong>
-                        </div>
-                      </div>
-
-                      <div
-                        style={
-                          styles.metadataLine
-                        }
-                      >
-                        Length —{" "}
-                        {item.length} in
-                        <span>
-                          •
-                        </span>
-                        Weight —{" "}
-                        {item.weight !==
-                        null
-                          ? `${item.weight} lb`
-                          : "Not recorded"}
-                        <span>
-                          •
-                        </span>
-                        Lake — {item.lake}
-                      </div>
-
-                      {item.caption && (
-                        <p
-                          style={
-                            styles.caption
-                          }
-                        >
-                          {item.caption}
-                        </p>
-                      )}
-
-                      <div
-                        style={
-                          styles.social
-                        }
-                      >
-                        <button
-                          style={
-                            styles.socialButton
-                          }
-                        >
-                          <Heart
-                            size={17}
-                          />
-                          Like
-                        </button>
-
-                        <button
-                          style={
-                            styles.socialButton
-                          }
-                        >
-                          <MessageCircle
-                            size={17}
-                          />
-                          Comment
-                        </button>
-
-                        <span
-                          style={
-                            styles.time
-                          }
-                        >
-                          {formatTimeAgo(
-                            item.created_at
-                          )}
-                        </span>
-                      </div>
+                      🎣 NEW CATCH!
                     </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
+                  </div>
+                )}
 
-        {/* =========================
-            TRIP STATS
-        ========================= */}
+                {/* =================================================
+                    PHOTO AREA
+                ================================================== */}
+
+                {photos.length > 0 && (
+                  <div style={styles.photoSection}>
+                    <button
+                      onClick={() =>
+                        openViewer(item, 0)
+                      }
+                      style={
+                        styles.mainPhotoButton
+                      }
+                    >
+                      <img
+                        src={photos[0]}
+                        alt={item.fish_species}
+                        style={
+                          styles.catchImage
+                        }
+                      />
+
+                      <div
+                        style={
+                          styles.photoViewHint
+                        }
+                      >
+                        Tap to view
+                      </div>
+                    </button>
+
+                    {photos.length > 1 && (
+                      <div
+                        style={
+                          styles.photoStrip
+                        }
+                      >
+                        {photos.map(
+                          (photoUrl, index) => (
+                            <button
+                              key={photoUrl}
+                              onClick={() =>
+                                openViewer(
+                                  item,
+                                  index
+                                )
+                              }
+                              style={{
+                                ...styles.thumbnailButton,
+                                border:
+                                  index === 0
+                                    ? `2px solid ${colors.gold}`
+                                    : "2px solid transparent",
+                              }}
+                            >
+                              <img
+                                src={photoUrl}
+                                alt={`${item.fish_species} photo ${index + 1}`}
+                                style={
+                                  styles.thumbnail
+                                }
+                              />
+                            </button>
+                          )
+                        )}
+
+                        <div
+                          style={
+                            styles.photoCount
+                          }
+                        >
+                          {photos.length} photos
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* =================================================
+                    CATCH CONTENT
+                ================================================== */}
+
+                <div style={styles.catchContent}>
+                  <div style={styles.catchHeader}>
+                    <div>
+                      <div
+                        style={
+                          styles.catchPerson
+                        }
+                      >
+                        {item.name}
+                      </div>
+
+                      <h3
+                        style={
+                          styles.fishName
+                        }
+                      >
+                        {item.fish_species}
+                      </h3>
+                    </div>
+
+                    <Fish
+                      size={23}
+                      color={colors.gold}
+                    />
+                  </div>
+
+                  {/* CLEAR METADATA */}
+
+                  <div style={styles.metadataBar}>
+                    <span>
+                      <b>Length</b>
+                      {" — "}
+                      {formatLength(
+                        item.length
+                      )}
+                    </span>
+
+                    <span
+                      style={
+                        styles.metadataDot
+                      }
+                    >
+                      •
+                    </span>
+
+                    <span>
+                      <b>Weight</b>
+                      {" — "}
+                      {formatWeight(
+                        item.weight
+                      ) ?? "—"}
+                    </span>
+
+                    <span
+                      style={
+                        styles.metadataDot
+                      }
+                    >
+                      •
+                    </span>
+
+                    <span
+                      style={
+                        styles.metadataLake
+                      }
+                    >
+                      <b>Lake</b>
+                      {" — "}
+                      {item.lake}
+                    </span>
+                  </div>
+
+                  {item.caption && (
+                    <p style={styles.caption}>
+                      {item.caption}
+                    </p>
+                  )}
+
+                  {/* ACTION ROW */}
+
+                  <div style={styles.social}>
+                    <button
+                      style={
+                        styles.socialButton
+                      }
+                    >
+                      <Heart size={17} />
+                      Like
+                    </button>
+
+                    <button
+                      style={
+                        styles.socialButton
+                      }
+                    >
+                      <MessageCircle
+                        size={17}
+                      />
+                      Comment
+                    </button>
+
+                    <button
+                      onClick={() =>
+                        deleteCatch(item.id)
+                      }
+                      style={
+                        styles.deleteButton
+                      }
+                    >
+                      <Trash2 size={16} />
+                      Delete
+                    </button>
+
+                    <span style={styles.time}>
+                      {new Date(
+                        item.created_at
+                      ).toLocaleDateString(
+                        undefined,
+                        {
+                          month: "short",
+                          day: "numeric",
+                        }
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+
+        {/* =====================================================
+            SECONDARY TRIP STATS
+        ====================================================== */}
 
         <div style={styles.tripCard}>
-          <div
-            style={
-              styles.tripHeader
-            }
-          >
-            <div style={styles.trophyCircle}>
-              <Trophy size={22} />
-            </div>
+          <div style={styles.tripHeader}>
+            <Trophy
+              size={25}
+              color={colors.gold}
+            />
 
             <div>
               <div
                 style={
-                  styles.sectionEyebrow
+                  styles.tripEyebrow
                 }
               >
-                THIS TRIP
+                THE BIG PICTURE
               </div>
 
-              <h2
-                style={
-                  styles.tripTitle
-                }
-              >
+              <h2 style={styles.tripTitle}>
                 Trip Stats
               </h2>
             </div>
           </div>
 
-          <div
-            style={
-              styles.tripStats
-            }
-          >
-            <div
-              style={
-                styles.tripStat
-              }
-            >
+          <div style={styles.tripStats}>
+            <div style={styles.tripStat}>
               <strong>
                 {catches.length}
               </strong>
 
-              <span>
-                CATCHES
-              </span>
+              <span>CATCHES</span>
             </div>
 
-            <div
-              style={
-                styles.tripStat
-              }
-            >
+            <div style={styles.tripStat}>
               <strong>
-                {
-                  new Set(
-                    catches.map(
-                      (c) =>
-                        c.name
-                    )
-                  ).size
-                }
+                {fishermen}
               </strong>
 
-              <span>
-                FISHERMEN
-              </span>
+              <span>FISHERMEN</span>
             </div>
 
-            <div
-              style={
-                styles.tripStat
-              }
-            >
+            <div style={styles.tripStat}>
               <strong>
-                🐟
+                {totalWeight % 1 === 0
+                  ? totalWeight
+                  : totalWeight.toFixed(1)}
               </strong>
 
-              <span>
-                WHITE IRON
-              </span>
+              <span>TOTAL LBS</span>
             </div>
           </div>
         </div>
       </section>
 
-      {/* =========================
+      {/* =====================================================
           BOTTOM NAV
-      ========================= */}
+      ====================================================== */}
 
-      <nav
-        className="bottom-nav"
-        style={styles.nav}
-      >
-        <button
-          className="ely-nav-button"
-          style={styles.navActive}
-        >
+      <nav style={styles.nav}>
+        <button style={styles.navActive}>
           <Fish size={21} />
-          <span>Feed</span>
+          Feed
         </button>
 
         <button
-          className="ely-nav-button"
           onClick={() => {
             window.location.href =
               "/fishing-location";
@@ -1395,50 +930,28 @@ export default function Home() {
           style={styles.navItem}
         >
           <MapPin size={21} />
-          <span>Fishing</span>
+          Fishing
         </button>
 
-        <button
-          className="ely-nav-button"
-          style={styles.navItem}
-        >
+        <button style={styles.navItem}>
           <Trophy size={21} />
-          <span>Leaders</span>
+          Leaders
         </button>
 
-        <button
-          className="ely-nav-button"
-          style={styles.navItem}
-        >
+        <button style={styles.navItem}>
           <Users size={21} />
-          <span>Family</span>
+          Family
         </button>
       </nav>
 
-      {/* =========================
+      {/* =====================================================
           POST MODAL
-      ========================= */}
+      ====================================================== */}
 
       {showPost && (
-        <div
-          style={
-            styles.modalBackground
-          }
-          onMouseDown={(event) => {
-            if (
-              event.target ===
-              event.currentTarget
-            ) {
-              closePostModal();
-            }
-          }}
-        >
+        <div style={styles.modalBackground}>
           <div style={styles.modal}>
-            <div
-              style={
-                styles.modalHeader
-              }
-            >
+            <div style={styles.modalHeader}>
               <div>
                 <div
                   style={
@@ -1448,52 +961,29 @@ export default function Home() {
                   NEW CATCH
                 </div>
 
-                <h2
-                  style={
-                    styles.modalTitle
-                  }
-                >
+                <h2 style={styles.modalTitle}>
                   Post Your Fish
                 </h2>
-
-                <p
-                  style={
-                    styles.modalSubtitle
-                  }
-                >
-                  Add up to 8 photos of
-                  the catch.
-                </p>
               </div>
 
               <button
-                onClick={
-                  closePostModal
+                onClick={() =>
+                  setShowPost(false)
                 }
-                style={
-                  styles.closeButton
-                }
+                style={styles.closeButton}
               >
-                <X size={20} />
+                <X size={21} />
               </button>
             </div>
 
-            <div
-              style={
-                styles.form
-              }
-            >
+            <div style={styles.form}>
               <input
                 value={name}
                 onChange={(event) =>
-                  setName(
-                    event.target.value
-                  )
+                  setName(event.target.value)
                 }
                 placeholder="Your name"
-                style={
-                  styles.input
-                }
+                style={styles.input}
               />
 
               <input
@@ -1504,16 +994,10 @@ export default function Home() {
                   )
                 }
                 placeholder="Fish species"
-                style={
-                  styles.input
-                }
+                style={styles.input}
               />
 
-              <div
-                style={
-                  styles.twoInputs
-                }
-              >
+              <div style={styles.twoInputs}>
                 <input
                   value={length}
                   onChange={(event) =>
@@ -1523,11 +1007,8 @@ export default function Home() {
                   }
                   placeholder="Length (in)"
                   type="number"
-                  min="0"
                   step="0.1"
-                  style={
-                    styles.input
-                  }
+                  style={styles.input}
                 />
 
                 <input
@@ -1539,25 +1020,18 @@ export default function Home() {
                   }
                   placeholder="Weight (lbs)"
                   type="number"
-                  min="0"
                   step="0.1"
-                  style={
-                    styles.input
-                  }
+                  style={styles.input}
                 />
               </div>
 
               <input
                 value={lake}
                 onChange={(event) =>
-                  setLake(
-                    event.target.value
-                  )
+                  setLake(event.target.value)
                 }
                 placeholder="Lake"
-                style={
-                  styles.input
-                }
+                style={styles.input}
               />
 
               <textarea
@@ -1568,81 +1042,58 @@ export default function Home() {
                   )
                 }
                 placeholder="Tell the family about the catch..."
-                rows={4}
+                rows={3}
                 style={{
                   ...styles.input,
-                  resize: "vertical",
+                  resize: "none",
                 }}
               />
 
-              <label
-                style={
-                  styles.photoButton
-                }
-              >
-                <Camera size={21} />
+              {/* MULTIPLE PHOTOS */}
 
-                <div>
-                  <strong>
-                    {photoFiles.length >
-                    0
-                      ? `${photoFiles.length} photo${
-                          photoFiles.length ===
-                          1
-                            ? ""
-                            : "s"
-                        } selected`
-                      : "Add photos"}
-                  </strong>
+              <label style={styles.photoButton}>
+                <Camera size={20} />
 
-                  <span
-                    style={
-                      styles.photoButtonHint
-                    }
-                  >
-                    Choose up to 8
-                  </span>
-                </div>
+                <span>
+                  {photoFiles.length === 0
+                    ? "Add photos"
+                    : `${photoFiles.length} photo${
+                        photoFiles.length === 1
+                          ? ""
+                          : "s"
+                      } selected`}
+                </span>
 
                 <input
                   type="file"
                   accept="image/*"
                   multiple
-                  style={{
-                    display:
-                      "none",
-                  }}
+                  style={{ display: "none" }}
                   onChange={
-                    handlePhotoChange
+                    handlePhotoSelection
                   }
                 />
               </label>
 
-              {photoPreviews.length >
-                0 && (
+              {photoPreviews.length > 0 && (
                 <div
                   style={
-                    styles.previewGrid
+                    styles.selectedPhotos
                   }
                 >
                   {photoPreviews.map(
-                    (
-                      preview,
-                      index
-                    ) => (
+                    (preview, index) => (
                       <div
                         key={preview}
                         style={
-                          styles.previewItem
+                          styles.selectedPhoto
                         }
                       >
                         <img
                           src={preview}
-                          alt={`Selected photo ${
-                            index + 1
-                          }`}
+                          alt={`Selected photo ${index + 1}`}
                           style={
-                            styles.previewImage
+                            styles.selectedPhotoImage
                           }
                         />
 
@@ -1654,24 +1105,11 @@ export default function Home() {
                             )
                           }
                           style={
-                            styles.previewRemove
+                            styles.removePhotoButton
                           }
                         >
-                          <X
-                            size={15}
-                          />
+                          <X size={14} />
                         </button>
-
-                        {index ===
-                          0 && (
-                          <span
-                            style={
-                              styles.previewMain
-                            }
-                          >
-                            Main
-                          </span>
-                        )}
                       </div>
                     )
                   )}
@@ -1679,46 +1117,32 @@ export default function Home() {
               )}
 
               <button
-                onClick={
-                  postCatch
-                }
-                disabled={
-                  posting
-                }
+                onClick={postCatch}
+                disabled={posting}
                 style={{
                   ...styles.submitButton,
-                  opacity:
-                    posting
-                      ? 0.65
-                      : 1,
+                  opacity: posting
+                    ? 0.65
+                    : 1,
                 }}
               >
-                {posting ? (
-                  "Posting Catch..."
-                ) : (
-                  <>
-                    <Fish
-                      size={19}
-                    />
-                    Post Catch
-                  </>
-                )}
+                {posting
+                  ? "Posting..."
+                  : "Post Catch"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* =========================
-          PHOTO VIEWER
-      ========================= */}
+      {/* =====================================================
+          FULL PHOTO VIEWER
+      ====================================================== */}
 
-      {viewer && (
+      {viewerCatch && (
         <div
-          style={
-            styles.viewerBackground
-          }
-          onMouseDown={(event) => {
+          style={styles.viewerBackground}
+          onClick={(event) => {
             if (
               event.target ===
               event.currentTarget
@@ -1727,41 +1151,30 @@ export default function Home() {
             }
           }}
         >
-          <div
-            style={
-              styles.viewer
-            }
-          >
-            <div
-              style={
-                styles.viewerTop
-              }
-            >
+          <div style={styles.viewer}>
+            {/* TOP BAR */}
+
+            <div style={styles.viewerTop}>
               <div>
                 <div
                   style={
-                    styles.viewerEyebrow
+                    styles.viewerPerson
                   }
                 >
-                  {viewer.item.name}
+                  {viewerCatch.name}
                 </div>
 
-                <h2
+                <div
                   style={
-                    styles.viewerTitle
+                    styles.viewerFish
                   }
                 >
-                  {
-                    viewer.item
-                      .fish_species
-                  }
-                </h2>
+                  {viewerCatch.fish_species}
+                </div>
               </div>
 
               <button
-                onClick={
-                  closeViewer
-                }
+                onClick={closeViewer}
                 style={
                   styles.viewerClose
                 }
@@ -1770,207 +1183,162 @@ export default function Home() {
               </button>
             </div>
 
-            <div
-              style={
-                styles.viewerImageArea
-              }
-              onWheel={
-                handleImageWheel
-              }
-            >
-              {viewer.photos.length >
-                1 && (
+            {/* IMAGE */}
+
+            <div style={styles.viewerImageArea}>
+              {getPhotoUrls(
+                viewerCatch.image_url
+              ).length > 1 && (
                 <button
                   onClick={
-                    previousPhoto
+                    goToPreviousPhoto
                   }
-                  style={{
-                    ...styles.viewerArrow,
-                    left: "14px",
-                  }}
-                  aria-label="Previous photo"
+                  style={
+                    styles.viewerArrowLeft
+                  }
                 >
-                  <ChevronLeft
-                    size={28}
-                  />
+                  <ChevronLeft size={30} />
                 </button>
               )}
 
-              <img
-                src={
-                  viewer.photos[
-                    viewer.index
-                  ]
+              <div
+                style={
+                  styles.zoomViewport
                 }
-                alt={
-                  viewer.item
-                    .fish_species
-                }
-                style={{
-                  ...styles.viewerImage,
-                  transform: `scale(${zoom})`,
-                }}
-              />
-
-              {viewer.photos.length >
-                1 && (
-                <button
-                  onClick={
-                    nextPhoto
+              >
+                <img
+                  src={
+                    getPhotoUrls(
+                      viewerCatch.image_url
+                    )[viewerPhotoIndex]
+                  }
+                  alt={
+                    viewerCatch.fish_species
                   }
                   style={{
-                    ...styles.viewerArrow,
-                    right: "14px",
+                    ...styles.viewerImage,
+                    transform: `scale(${zoom})`,
                   }}
-                  aria-label="Next photo"
+                />
+              </div>
+
+              {getPhotoUrls(
+                viewerCatch.image_url
+              ).length > 1 && (
+                <button
+                  onClick={goToNextPhoto}
+                  style={
+                    styles.viewerArrowRight
+                  }
                 >
-                  <ChevronRight
-                    size={28}
-                  />
+                  <ChevronRight size={30} />
                 </button>
               )}
             </div>
 
-            <div
-              style={
-                styles.viewerControls
-              }
-            >
+            {/* CONTROLS */}
+
+            <div style={styles.viewerControls}>
               <button
-                onClick={
-                  zoomOut
+                onClick={() =>
+                  changeZoom(-0.25)
                 }
                 style={
                   styles.viewerControl
                 }
               >
-                <ZoomOut
-                  size={18}
-                />
-              </button>
-
-              <span
-                style={
-                  styles.zoomText
-                }
-              >
-                {Math.round(
-                  zoom * 100
-                )}
-                %
-              </span>
-
-              <button
-                onClick={
-                  zoomIn
-                }
-                style={
-                  styles.viewerControl
-                }
-              >
-                <ZoomIn
-                  size={18}
-                />
+                <ZoomOut size={19} />
               </button>
 
               <button
-                onClick={
-                  resetZoom
+                onClick={resetZoom}
+                style={
+                  styles.zoomPercentage
+                }
+              >
+                {Math.round(zoom * 100)}%
+              </button>
+
+              <button
+                onClick={() =>
+                  changeZoom(0.25)
                 }
                 style={
                   styles.viewerControl
                 }
               >
-                <RotateCcw
-                  size={17}
-                />
+                <ZoomIn size={19} />
+              </button>
+
+              <button
+                onClick={resetZoom}
+                style={
+                  styles.viewerControl
+                }
+              >
+                <RotateCcw size={17} />
               </button>
             </div>
 
-            {viewer.photos.length >
-              1 && (
+            {/* PHOTO COUNTER */}
+
+            {getPhotoUrls(
+              viewerCatch.image_url
+            ).length > 1 && (
               <div
                 style={
                   styles.viewerCounter
                 }
               >
                 Photo{" "}
-                {viewer.index + 1}{" "}
-                of{" "}
+                {viewerPhotoIndex + 1} of{" "}
                 {
-                  viewer.photos
-                    .length
+                  getPhotoUrls(
+                    viewerCatch.image_url
+                  ).length
                 }
               </div>
             )}
 
+            {/* DETAILS */}
+
             <div
-              className="viewer-info"
               style={
-                styles.viewerInfo
+                styles.viewerDetails
               }
             >
-              <div
-                style={
-                  styles.viewerMetadata
-                }
-              >
-                <div>
-                  <span>
-                    LENGTH
-                  </span>
-
-                  <strong>
-                    {
-                      viewer.item
-                        .length
-                    }{" "}
-                    in
-                  </strong>
-                </div>
-
-                <div>
-                  <span>
-                    WEIGHT
-                  </span>
-
-                  <strong>
-                    {viewer.item
-                      .weight !==
-                    null
-                      ? `${viewer.item.weight} lb`
-                      : "—"}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>
-                    LAKE
-                  </span>
-
-                  <strong>
-                    {
-                      viewer.item
-                        .lake
-                    }
-                  </strong>
-                </div>
+              <div>
+                <b>Length</b>
+                {" — "}
+                {formatLength(
+                  viewerCatch.length
+                )}
               </div>
 
-              {viewer.item
-                .caption && (
-                <p
-                  style={
-                    styles.viewerCaption
-                  }
-                >
-                  {
-                    viewer.item
-                      .caption
-                  }
-                </p>
-              )}
+              <div>
+                <b>Weight</b>
+                {" — "}
+                {formatWeight(
+                  viewerCatch.weight
+                ) ?? "—"}
+              </div>
+
+              <div>
+                <b>Lake</b>
+                {" — "}
+                {viewerCatch.lake}
+              </div>
             </div>
+
+            {viewerCatch.caption && (
+              <p
+                style={
+                  styles.viewerCaption
+                }
+              >
+                {viewerCatch.caption}
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -1978,9 +1346,9 @@ export default function Home() {
   );
 }
 
-/* =========================================================
+/* ============================================================
    STYLES
-========================================================= */
+============================================================ */
 
 const styles: Record<
   string,
@@ -1989,21 +1357,21 @@ const styles: Record<
   page: {
     minHeight: "100vh",
     background: colors.cream,
-    color: colors.textDark,
-    paddingBottom: "92px",
+    color: colors.dark,
+    paddingBottom: "90px",
     fontFamily:
       "Arial, Helvetica, sans-serif",
   },
 
-  /* =========================
+  /* ==========================================================
      HERO
-  ========================= */
+  ========================================================== */
 
   hero: {
     position: "relative",
-    minHeight: "620px",
+    minHeight: "510px",
     overflow: "hidden",
-    color: "#fff",
+    color: colors.white,
   },
 
   heroImage: {
@@ -2013,14 +1381,13 @@ const styles: Record<
       "url('/minnesota-sunset.jpg.png')",
     backgroundSize: "cover",
     backgroundPosition: "center",
-    transform: "scale(1.02)",
   },
 
-  heroOverlay: {
+  heroDark: {
     position: "absolute",
     inset: 0,
     background:
-      "linear-gradient(to bottom, rgba(5,18,12,0.20) 0%, rgba(5,18,12,0.36) 45%, rgba(7,19,14,0.94) 100%)",
+      "linear-gradient(to bottom, rgba(7,20,14,0.12) 0%, rgba(7,20,14,0.35) 45%, rgba(7,20,14,0.95) 100%)",
   },
 
   heroContent: {
@@ -2029,125 +1396,89 @@ const styles: Record<
     maxWidth: "900px",
     margin: "0 auto",
     padding:
-      "42px 22px 38px",
+      "38px 20px 32px",
+  },
+
+  logoArea: {
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    minHeight: "190px",
+  },
+
+  /*
+    IMPORTANT:
+    There is NO circular background around the logo anymore.
+    The PNG sits directly on the hero.
+  */
+
+  heroLogo: {
+    width: "185px",
+    height: "185px",
+    objectFit: "contain",
+    display: "block",
+    filter:
+      "drop-shadow(0 12px 20px rgba(0,0,0,0.45))",
+  },
+
+  heroTitleArea: {
     textAlign: "center",
   },
 
-  heroTopLabel: {
-    display: "inline-block",
-    padding:
-      "8px 13px",
-    border:
-      "1px solid rgba(255,255,255,0.35)",
-    borderRadius: "999px",
-    background:
-      "rgba(0,0,0,0.18)",
-    color:
-      "rgba(255,255,255,0.9)",
+  eyebrow: {
+    color: "#F0CF5A",
     fontSize: "10px",
     fontWeight: 900,
-    letterSpacing: "2.5px",
-  },
-
-  fishLogo: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    margin:
-      "22px auto 4px",
-    background:
-      "transparent",
-    border: "none",
-    boxShadow: "none",
-  },
-
-  logoImage: {
-    width: "170px",
-    height: "170px",
-    objectFit: "contain",
-    display: "block",
+    letterSpacing: "3px",
   },
 
   title: {
-    margin:
-      "5px 0 0",
-    fontSize: "52px",
+    margin: "8px 0 0",
+    fontSize: "44px",
     lineHeight: 1,
     fontWeight: 900,
-    letterSpacing: "-2.5px",
-    textShadow:
-      "0 5px 22px rgba(0,0,0,0.35)",
+    letterSpacing: "-2px",
   },
 
   subtitle: {
     margin:
-      "13px 0 0",
+      "10px 0 0",
     fontSize: "15px",
     color:
-      "rgba(255,255,255,0.84)",
-    letterSpacing: "0.3px",
-  },
-
-  heroRule: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "10px",
-    margin:
-      "20px auto 0",
-    width: "170px",
-  },
-
-  heroRuleDot: {
-    color: colors.gold,
-    fontSize: "18px",
+      "rgba(255,255,255,0.82)",
   },
 
   locationCard: {
-    margin:
-      "43px auto 0",
-    maxWidth: "540px",
+    marginTop: "55px",
     display: "flex",
     alignItems: "center",
-    gap: "14px",
-    padding: "16px",
-    textAlign: "left",
+    gap: "13px",
+    padding: "15px",
     borderRadius: "16px",
     background:
-      "rgba(8,29,19,0.76)",
+      "rgba(13,36,26,0.76)",
     border:
-      "1px solid rgba(255,255,255,0.22)",
+      "1px solid rgba(255,255,255,0.16)",
     backdropFilter:
       "blur(14px)",
     boxShadow:
-      "0 18px 45px rgba(0,0,0,0.28)",
+      "0 12px 30px rgba(0,0,0,0.24)",
   },
 
   locationIcon: {
+    width: "45px",
+    height: "45px",
     flexShrink: 0,
-    width: "46px",
-    height: "46px",
+    borderRadius: "12px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: "50%",
-    background:
-      colors.gold,
-    color:
-      colors.darkForest,
-  },
-
-  locationLabel: {
-    fontSize: "9px",
-    fontWeight: 900,
-    letterSpacing: "2px",
-    color:
-      "rgba(255,255,255,0.58)",
+    background: colors.gold,
+    color: colors.dark,
   },
 
   locationTitle: {
-    marginTop: "3px",
-    fontSize: "17px",
+    fontSize: "16px",
     fontWeight: 900,
   },
 
@@ -2155,414 +1486,326 @@ const styles: Record<
     marginTop: "3px",
     fontSize: "12px",
     color:
-      "rgba(255,255,255,0.62)",
+      "rgba(255,255,255,0.65)",
   },
 
   postButton: {
     width: "100%",
-    maxWidth: "540px",
-    margin:
-      "12px auto 0",
-    padding: "17px 20px",
+    marginTop: "12px",
+    padding: "16px",
+    border: "none",
+    borderRadius: "14px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: "9px",
-    border: "none",
-    borderRadius: "13px",
-    background:
-      colors.orange,
-    color: "#fff",
+    gap: "8px",
+    background: colors.orange,
+    color: colors.white,
     fontSize: "16px",
     fontWeight: 900,
     cursor: "pointer",
     boxShadow:
-      "0 10px 25px rgba(201,106,61,0.24)",
-    transition:
-      "all 0.2s ease",
+      "0 10px 25px rgba(214,107,61,0.28)",
   },
 
-  /* =========================
+  /* ==========================================================
+     STICKY STATS
+  ========================================================== */
+
+  stickyStatsWrapper: {
+    position: "sticky",
+    top: 0,
+    zIndex: 70,
+    padding:
+      "9px 12px",
+    background:
+      "rgba(244,240,230,0.96)",
+    borderBottom:
+      "1px solid rgba(23,61,45,0.12)",
+    backdropFilter:
+      "blur(16px)",
+  },
+
+  stickyStats: {
+    maxWidth: "900px",
+    margin: "0 auto",
+    minHeight: "58px",
+    display: "grid",
+    gridTemplateColumns:
+      "1fr auto 1fr auto 1fr",
+    alignItems: "center",
+    padding: "5px 4px",
+    borderRadius: "16px",
+    background: colors.forest,
+    color: colors.white,
+    boxShadow:
+      "0 6px 20px rgba(13,36,26,0.18)",
+  },
+
+  stickyStat: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "7px",
+  },
+
+  stickyIcon: {
+    width: "29px",
+    height: "29px",
+    borderRadius: "9px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background:
+      "rgba(255,255,255,0.1)",
+    color: "#F0CF5A",
+  },
+
+  statDivider: {
+    width: "1px",
+    height: "31px",
+    background:
+      "rgba(255,255,255,0.18)",
+  },
+
+  /* ==========================================================
      FEED
-  ========================= */
+  ========================================================== */
 
   feed: {
-    maxWidth: "980px",
+    maxWidth: "900px",
     margin: "0 auto",
     padding:
-      "32px 20px 40px",
+      "25px 17px 30px",
   },
 
-  feedIntro: {
+  sectionHeader: {
     display: "flex",
     alignItems: "flex-end",
     justifyContent:
       "space-between",
-    marginBottom: "22px",
+    marginBottom: "16px",
   },
 
   sectionEyebrow: {
-    color:
-      colors.orange,
-    fontSize: "10px",
+    color: colors.forest,
+    fontSize: "9px",
     fontWeight: 900,
-    letterSpacing: "2.6px",
+    letterSpacing: "2.5px",
   },
 
   sectionTitle: {
     margin:
       "5px 0 0",
-    fontSize: "30px",
+    fontSize: "29px",
     lineHeight: 1,
     fontWeight: 900,
-    color:
-      colors.forest,
-    letterSpacing:
-      "-1px",
+    color: colors.dark,
   },
 
-  sectionDescription: {
+  sectionSubtext: {
     margin:
-      "8px 0 0",
-    color:
-      colors.muted,
-    fontSize: "13px",
-  },
-
-  fishBadge: {
-    width: "48px",
-    height: "48px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: "14px",
-    background:
-      colors.forest,
-    color:
-      colors.gold,
-    boxShadow:
-      "0 8px 20px rgba(23,58,42,0.15)",
+      "7px 0 0",
+    color: colors.muted,
+    fontSize: "12px",
   },
 
   loadingCard: {
-    minHeight: "160px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "12px",
-    color:
-      colors.muted,
+    padding: "40px",
+    textAlign: "center",
+    color: colors.muted,
   },
 
   emptyCard: {
     padding:
       "45px 20px",
-    border:
-      `1px solid ${colors.line}`,
-    borderRadius: "18px",
-    background:
-      colors.warmWhite,
+    borderRadius: "20px",
     textAlign: "center",
-  },
-
-  emptyIcon: {
-    width: "76px",
-    height: "76px",
-    margin:
-      "0 auto 15px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: "50%",
-    background:
-      "#E5EEE8",
-    color:
-      colors.forest,
+    background: colors.paper,
+    border:
+      "1px solid rgba(23,61,45,0.1)",
   },
 
   emptyTitle: {
-    margin: 0,
-    color:
-      colors.forest,
-    fontSize: "23px",
+    margin:
+      "12px 0 0",
+    color: colors.dark,
   },
 
   emptyText: {
-    margin:
-      "8px 0 20px",
-    color:
-      colors.muted,
+    color: colors.muted,
+    fontSize: "14px",
   },
 
-  emptyButton: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "7px",
-    padding:
-      "12px 16px",
-    border: "none",
-    borderRadius: "10px",
-    background:
-      colors.forest,
-    color: "#fff",
-    fontWeight: 800,
-    cursor: "pointer",
-  },
-
-  /* =========================
+  /* ==========================================================
      CATCH CARD
-  ========================= */
+  ========================================================== */
 
   catchCard: {
-    position: "relative",
     overflow: "hidden",
-    marginBottom: "18px",
+    marginBottom: "16px",
+    borderRadius: "20px",
+    background: colors.paper,
     border:
-      `1px solid ${colors.line}`,
-    borderRadius: "18px",
-    background:
-      colors.warmWhite,
+      "1px solid rgba(23,61,45,0.12)",
     boxShadow:
-      "0 12px 35px rgba(37,45,39,0.10)",
+      "0 8px 24px rgba(23,61,45,0.09)",
   },
 
   photoSection: {
-    position: "relative",
-    background:
-      "#111B16",
+    background: "#17211B",
   },
 
   mainPhotoButton: {
     position: "relative",
     width: "100%",
-    minHeight: "280px",
-    maxHeight: "520px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+    height: "330px",
     padding: 0,
     border: "none",
-    background:
-      "#111B16",
-    cursor: "zoom-in",
+    background: "#17211B",
+    display: "block",
+    cursor: "pointer",
     overflow: "hidden",
   },
 
   catchImage: {
     width: "100%",
-    height: "auto",
-    maxHeight: "520px",
+    height: "100%",
     objectFit: "contain",
     display: "block",
-    transition:
-      "transform 0.25s ease",
+    background: "#17211B",
   },
 
-  photoOpenHint: {
+  photoViewHint: {
     position: "absolute",
     right: "12px",
     bottom: "12px",
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
     padding:
       "7px 10px",
     borderRadius: "999px",
     background:
-      "rgba(0,0,0,0.68)",
-    color: "#fff",
+      "rgba(13,36,26,0.82)",
+    color: colors.white,
     fontSize: "11px",
     fontWeight: 800,
+    backdropFilter:
+      "blur(8px)",
   },
 
-  thumbnailRow: {
+  photoStrip: {
     display: "flex",
     alignItems: "center",
-    gap: "8px",
+    gap: "7px",
     padding:
-      "10px 12px",
+      "8px 10px 10px",
     overflowX: "auto",
-    background:
-      "#0D1712",
+  },
+
+  thumbnailButton: {
+    flexShrink: 0,
+    width: "54px",
+    height: "54px",
+    padding: 0,
+    borderRadius: "9px",
+    overflow: "hidden",
+    background: "#17211B",
+    cursor: "pointer",
   },
 
   thumbnail: {
-    position: "relative",
-    flexShrink: 0,
-    width: "60px",
-    height: "52px",
-    padding: 0,
-    border:
-      "1px solid rgba(255,255,255,0.18)",
-    borderRadius: "8px",
-    overflow: "hidden",
-    background:
-      "#17221B",
-    cursor: "pointer",
-    transition:
-      "all 0.2s ease",
-  },
-
-  thumbnailImage: {
     width: "100%",
     height: "100%",
     objectFit: "cover",
     display: "block",
   },
 
-  coverPhotoLabel: {
-    position: "absolute",
-    left: "4px",
-    bottom: "4px",
-    padding:
-      "2px 4px",
-    borderRadius: "4px",
-    background:
-      "rgba(0,0,0,0.68)",
-    color: "#fff",
-    fontSize: "7px",
-    fontWeight: 900,
-    textTransform:
-      "uppercase",
-  },
-
   photoCount: {
+    marginLeft: "auto",
     flexShrink: 0,
-    marginLeft: "2px",
+    padding:
+      "6px 9px",
+    borderRadius: "999px",
+    background:
+      "rgba(255,255,255,0.12)",
     color:
-      "rgba(255,255,255,0.58)",
+      "rgba(255,255,255,0.78)",
     fontSize: "11px",
     fontWeight: 800,
   },
 
   catchContent: {
-    padding: "18px",
+    padding: "17px",
   },
 
   catchHeader: {
     display: "flex",
-    alignItems: "flex-start",
     justifyContent:
       "space-between",
-    gap: "12px",
+    alignItems: "flex-start",
   },
 
   catchPerson: {
-    color:
-      colors.orange,
+    color: colors.pine,
     fontSize: "12px",
     fontWeight: 900,
+    textTransform:
+      "uppercase",
     letterSpacing:
-      "0.4px",
+      "0.7px",
   },
 
   fishName: {
     margin:
       "3px 0 0",
-    color:
-      colors.forest,
     fontSize: "26px",
     lineHeight: 1.05,
     fontWeight: 900,
-    letterSpacing:
-      "-0.8px",
+    color: colors.dark,
   },
 
-  catchActions: {
-    display: "flex",
-    alignItems: "center",
-    gap: "9px",
-  },
+  /* ==========================================================
+     METADATA
+  ========================================================== */
 
-  deleteButton: {
-    width: "35px",
-    height: "35px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    border:
-      "1px solid rgba(185,74,66,0.20)",
-    borderRadius: "9px",
-    background:
-      "rgba(185,74,66,0.06)",
-    color:
-      colors.red,
-    cursor: "pointer",
-    transition:
-      "all 0.2s ease",
-  },
-
-  catchStats: {
-    display: "grid",
-    gridTemplateColumns:
-      "1fr 1fr 1.4fr",
-    gap: "10px",
-    marginTop: "17px",
-    padding:
-      "13px 0",
-    borderTop:
-      `1px solid ${colors.line}`,
-    borderBottom:
-      `1px solid ${colors.line}`,
-  },
-
-  catchStat: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "4px",
-    minWidth: 0,
-  },
-
-  statLabel: {
-    color:
-      colors.muted,
-    fontSize: "8px",
-    fontWeight: 900,
-    letterSpacing: "1.8px",
-  },
-
-  statValue: {
-    color:
-      colors.forest,
-    fontSize: "14px",
-    fontWeight: 900,
-    overflow: "hidden",
-    textOverflow:
-      "ellipsis",
-    whiteSpace:
-      "nowrap",
-  },
-
-  metadataLine: {
+  metadataBar: {
     display: "flex",
     flexWrap: "wrap",
     alignItems: "center",
-    gap: "7px",
-    marginTop: "13px",
-    color:
-      colors.muted,
-    fontSize: "11px",
-    fontWeight: 700,
+    gap: "6px",
+    marginTop: "15px",
+    padding:
+      "12px 0",
+    borderTop:
+      "1px solid rgba(23,61,45,0.1)",
+    borderBottom:
+      "1px solid rgba(23,61,45,0.1)",
+    color: colors.dark,
+    fontSize: "12px",
+    lineHeight: 1.5,
+  },
+
+  metadataDot: {
+    color: colors.gold,
+    fontWeight: 900,
+  },
+
+  metadataLake: {
+    minWidth: 0,
   },
 
   caption: {
     margin:
-      "14px 0 0",
-    color:
-      "#455249",
-    fontSize: "14px",
+      "13px 0 0",
+    color: "#59615A",
     lineHeight: 1.55,
+    fontSize: "14px",
   },
 
   social: {
     display: "flex",
     alignItems: "center",
-    gap: "16px",
-    marginTop: "15px",
-    paddingTop:
-      "13px",
-    borderTop:
-      `1px solid ${colors.line}`,
+    gap: "15px",
+    marginTop: "14px",
   },
 
   socialButton: {
@@ -2571,105 +1814,130 @@ const styles: Record<
     gap: "6px",
     padding: 0,
     border: "none",
-    background:
-      "transparent",
-    color:
-      colors.muted,
+    background: "transparent",
+    color: colors.muted,
     fontSize: "12px",
     fontWeight: 700,
     cursor: "pointer",
   },
 
+  deleteButton: {
+    display: "flex",
+    alignItems: "center",
+    gap: "5px",
+    padding: 0,
+    border: "none",
+    background: "transparent",
+    color: colors.danger,
+    fontSize: "12px",
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+
   time: {
     marginLeft: "auto",
-    color:
-      "#9A9F99",
+    color: "#929991",
     fontSize: "11px",
   },
 
-  bubbleLayer: {
+  /* ==========================================================
+     BUBBLE CELEBRATION
+  ========================================================== */
+
+  celebrationOverlay: {
     position: "absolute",
-    inset: 0,
     zIndex: 20,
+    inset: 0,
     pointerEvents: "none",
     overflow: "hidden",
   },
 
   bubble: {
     position: "absolute",
-    bottom: "20%",
-    border:
-      "2px solid rgba(255,255,255,0.7)",
+    bottom: "-25px",
+    display: "block",
     borderRadius: "50%",
+    border:
+      "2px solid rgba(255,255,255,0.65)",
     background:
-      "rgba(255,255,255,0.12)",
-    animation:
-      "bubbleRise 2.5s ease-out forwards",
-    "--drift": "0px",
-  } as React.CSSProperties,
+      "rgba(255,255,255,0.18)",
+    boxShadow:
+      "0 0 12px rgba(255,255,255,0.18)",
+    animationName:
+      "bubbleRise",
+    animationTimingFunction:
+      "ease-out",
+    animationIterationCount:
+      1,
+  },
 
-  /* =========================
-     TRIP STATS
-  ========================= */
+  newCatchBadge: {
+    position: "absolute",
+    top: "18px",
+    left: "50%",
+    transform:
+      "translateX(-50%)",
+    padding:
+      "9px 15px",
+    borderRadius: "999px",
+    background: colors.gold,
+    color: colors.dark,
+    fontSize: "12px",
+    fontWeight: 900,
+    boxShadow:
+      "0 7px 18px rgba(0,0,0,0.22)",
+  },
+
+  /* ==========================================================
+     TRIP CARD
+  ========================================================== */
 
   tripCard: {
-    marginTop: "28px",
+    marginTop: "25px",
     padding: "20px",
-    borderRadius: "17px",
-    background:
-      colors.forest,
-    color: "#fff",
+    borderRadius: "20px",
+    background: colors.forest,
+    color: colors.white,
     boxShadow:
-      "0 12px 28px rgba(23,58,42,0.16)",
+      "0 10px 25px rgba(23,61,45,0.15)",
   },
 
   tripHeader: {
     display: "flex",
     alignItems: "center",
-    gap: "11px",
+    gap: "10px",
   },
 
-  trophyCircle: {
-    width: "43px",
-    height: "43px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: "12px",
-    background:
-      "rgba(217,164,65,0.15)",
-    color:
-      colors.gold,
+  tripEyebrow: {
+    color: "#F0CF5A",
+    fontSize: "9px",
+    fontWeight: 900,
+    letterSpacing: "2px",
   },
 
   tripTitle: {
     margin:
       "3px 0 0",
-    fontSize: "23px",
-    fontWeight: 900,
+    fontSize: "21px",
   },
 
   tripStats: {
     display: "grid",
     gridTemplateColumns:
-      "repeat(3,1fr)",
-    marginTop: "22px",
-    paddingTop: "17px",
-    borderTop:
-      "1px solid rgba(255,255,255,0.12)",
+      "repeat(3, 1fr)",
+    marginTop: "20px",
+    textAlign: "center",
   },
 
   tripStat: {
     display: "flex",
     flexDirection: "column",
-    alignItems: "center",
-    gap: "5px",
-    textAlign: "center",
+    gap: "4px",
   },
 
-  /* =========================
-     NAV
-  ========================= */
+  /* ==========================================================
+     BOTTOM NAV
+  ========================================================== */
 
   nav: {
     position: "fixed",
@@ -2677,58 +1945,48 @@ const styles: Record<
     bottom: 0,
     left: 0,
     right: 0,
-    height: "75px",
+    height: "70px",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    gap: "55px",
+    gap: "50px",
     background:
-      "rgba(12,33,24,0.97)",
+      "rgba(13,36,26,0.97)",
     borderTop:
-      "1px solid rgba(255,255,255,0.10)",
-    boxShadow:
-      "0 -8px 25px rgba(0,0,0,0.12)",
+      "1px solid rgba(255,255,255,0.12)",
     backdropFilter:
-      "blur(16px)",
+      "blur(18px)",
   },
 
   navActive: {
+    border: "none",
+    background: "transparent",
+    color: "#F0CF5A",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: "4px",
-    padding: 0,
-    border: "none",
-    background:
-      "transparent",
-    color:
-      colors.gold,
+    gap: "3px",
     fontSize: "10px",
     fontWeight: 900,
-    cursor: "pointer",
   },
 
   navItem: {
+    border: "none",
+    background: "transparent",
+    color:
+      "rgba(255,255,255,0.48)",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: "4px",
-    padding: 0,
-    border: "none",
-    background:
-      "transparent",
-    color:
-      "rgba(255,255,255,0.48)",
+    gap: "3px",
     fontSize: "10px",
-    fontWeight: 800,
+    fontWeight: 700,
     cursor: "pointer",
-    transition:
-      "color 0.2s ease",
   },
 
-  /* =========================
+  /* ==========================================================
      POST MODAL
-  ========================= */
+  ========================================================== */
 
   modalBackground: {
     position: "fixed",
@@ -2736,95 +1994,70 @@ const styles: Record<
     zIndex: 100,
     display: "flex",
     alignItems: "flex-end",
-    justifyContent:
-      "center",
+    justifyContent: "center",
     background:
-      "rgba(3,10,7,0.74)",
+      "rgba(5,15,10,0.76)",
     backdropFilter:
       "blur(5px)",
   },
 
   modal: {
     width: "100%",
-    maxWidth: "680px",
-    maxHeight: "94vh",
+    maxWidth: "700px",
+    maxHeight: "92vh",
     overflowY: "auto",
     padding:
-      "25px 20px 32px",
+      "23px 18px 28px",
     borderRadius:
-      "22px 22px 0 0",
-    background:
-      colors.warmWhite,
-    border:
-      `1px solid ${colors.line}`,
-    color:
-      colors.textDark,
+      "24px 24px 0 0",
+    background: colors.paper,
+    color: colors.dark,
   },
 
   modalHeader: {
     display: "flex",
     justifyContent:
       "space-between",
-    alignItems:
-      "flex-start",
-    gap: "15px",
-    marginBottom:
-      "20px",
+    alignItems: "flex-start",
+    marginBottom: "19px",
   },
 
   modalTitle: {
     margin:
       "5px 0 0",
-    color:
-      colors.forest,
-    fontSize: "28px",
+    fontSize: "27px",
     fontWeight: 900,
-  },
-
-  modalSubtitle: {
-    margin:
-      "6px 0 0",
-    color:
-      colors.muted,
-    fontSize: "12px",
   },
 
   closeButton: {
     width: "40px",
     height: "40px",
-    flexShrink: 0,
+    borderRadius: "50%",
+    border: "none",
+    background:
+      "rgba(23,61,45,0.08)",
+    color: colors.dark,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    border:
-      `1px solid ${colors.line}`,
-    borderRadius: "10px",
-    background:
-      "#ECE7DB",
-    color:
-      colors.forest,
     cursor: "pointer",
   },
 
   form: {
     display: "flex",
-    flexDirection:
-      "column",
-    gap: "11px",
+    flexDirection: "column",
+    gap: "10px",
   },
 
   input: {
     boxSizing: "border-box",
     width: "100%",
-    padding:
-      "14px 13px",
+    padding: "14px",
+    borderRadius: "12px",
     border:
-      `1px solid ${colors.line}`,
-    borderRadius: "10px",
-    background:
-      "#FAF8F2",
-    color:
-      colors.textDark,
+      "1px solid rgba(23,61,45,0.15)",
+    background: "#F8F6EF",
+    color: colors.dark,
     fontSize: "15px",
     outline: "none",
   },
@@ -2833,111 +2066,83 @@ const styles: Record<
     display: "grid",
     gridTemplateColumns:
       "1fr 1fr",
-    gap: "10px",
+    gap: "9px",
   },
 
   photoButton: {
-    minHeight: "64px",
+    minHeight: "52px",
     display: "flex",
     alignItems: "center",
-    justifyContent:
-      "center",
-    gap: "10px",
-    border:
-      `1px dashed ${colors.gold}`,
-    borderRadius: "11px",
-    background:
-      "#FBF7EA",
-    color:
-      colors.forest,
-    cursor: "pointer",
-  },
-
-  photoButtonHint: {
-    display: "block",
-    marginTop: "2px",
-    color:
-      colors.muted,
-    fontSize: "10px",
-  },
-
-  previewGrid: {
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(4, 1fr)",
+    justifyContent: "center",
     gap: "8px",
-  },
-
-  previewItem: {
-    position: "relative",
-    aspectRatio: "1",
-    overflow: "hidden",
-    borderRadius: "9px",
+    borderRadius: "12px",
+    border:
+      `1px dashed ${colors.pine}`,
+    color: colors.forest,
     background:
-      "#D9D4C8",
+      "rgba(23,61,45,0.04)",
+    cursor: "pointer",
+    fontWeight: 800,
+    fontSize: "14px",
   },
 
-  previewImage: {
+  selectedPhotos: {
+    display: "flex",
+    gap: "8px",
+    overflowX: "auto",
+    padding:
+      "2px 0 5px",
+  },
+
+  selectedPhoto: {
+    position: "relative",
+    flexShrink: 0,
+    width: "76px",
+    height: "76px",
+    borderRadius: "10px",
+    overflow: "hidden",
+    background: "#17211B",
+  },
+
+  selectedPhotoImage: {
     width: "100%",
     height: "100%",
     objectFit: "cover",
     display: "block",
   },
 
-  previewRemove: {
+  removePhotoButton: {
     position: "absolute",
-    top: "5px",
-    right: "5px",
-    width: "25px",
-    height: "25px",
+    top: "4px",
+    right: "4px",
+    width: "24px",
+    height: "24px",
+    padding: 0,
+    borderRadius: "50%",
+    border: "none",
+    background:
+      "rgba(0,0,0,0.72)",
+    color: colors.white,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    border: "none",
-    borderRadius: "50%",
-    background:
-      "rgba(0,0,0,0.68)",
-    color: "#fff",
     cursor: "pointer",
   },
 
-  previewMain: {
-    position: "absolute",
-    left: "5px",
-    bottom: "5px",
-    padding:
-      "3px 5px",
-    borderRadius: "4px",
-    background:
-      colors.gold,
-    color:
-      colors.darkForest,
-    fontSize: "8px",
-    fontWeight: 900,
-  },
-
   submitButton: {
-    minHeight: "52px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent:
-      "center",
-    gap: "8px",
-    padding:
-      "14px",
+    padding: "15px",
     border: "none",
-    borderRadius: "11px",
-    background:
-      colors.forest,
-    color: "#fff",
+    borderRadius: "12px",
+    background: colors.orange,
+    color: colors.white,
     fontSize: "15px",
     fontWeight: 900,
     cursor: "pointer",
   },
 
-  /* =========================
+  /* ==========================================================
      PHOTO VIEWER
-  ========================= */
+  ========================================================== */
 
   viewerBackground: {
     position: "fixed",
@@ -2945,196 +2150,278 @@ const styles: Record<
     zIndex: 200,
     display: "flex",
     alignItems: "center",
-    justifyContent:
-      "center",
-    padding: "14px",
+    justifyContent: "center",
     background:
-      "rgba(3,8,5,0.94)",
-    backdropFilter:
-      "blur(8px)",
+      "rgba(4,10,7,0.97)",
+    padding: "10px",
   },
 
   viewer: {
     width: "100%",
-    maxWidth: "1050px",
-    maxHeight: "96vh",
+    maxWidth: "1000px",
+    height: "100%",
+    maxHeight: "900px",
     display: "flex",
-    flexDirection:
-      "column",
-    overflow: "hidden",
-    border:
-      "1px solid rgba(255,255,255,0.12)",
-    borderRadius: "17px",
-    background:
-      "#08130E",
-    color: "#fff",
-    boxShadow:
-      "0 30px 90px rgba(0,0,0,0.55)",
+    flexDirection: "column",
+    color: colors.white,
   },
 
   viewerTop: {
-    flexShrink: 0,
     display: "flex",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent:
       "space-between",
-    gap: "15px",
     padding:
-      "15px 16px",
-    borderBottom:
-      "1px solid rgba(255,255,255,0.08)",
+      "8px 4px 12px",
   },
 
-  viewerEyebrow: {
-    color:
-      colors.gold,
-    fontSize: "9px",
-    fontWeight: 900,
-    letterSpacing: "2px",
+  viewerPerson: {
+    color: "#F0CF5A",
+    fontSize: "11px",
+    fontWeight: 800,
+    textTransform:
+      "uppercase",
+    letterSpacing:
+      "1px",
   },
 
-  viewerTitle: {
-    margin:
-      "3px 0 0",
-    fontSize: "21px",
+  viewerFish: {
+    marginTop: "2px",
+    fontSize: "20px",
     fontWeight: 900,
   },
 
   viewerClose: {
-    width: "39px",
-    height: "39px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent:
-      "center",
-    flexShrink: 0,
+    width: "42px",
+    height: "42px",
+    borderRadius: "50%",
     border:
-      "1px solid rgba(255,255,255,0.15)",
-    borderRadius: "10px",
+      "1px solid rgba(255,255,255,0.16)",
     background:
       "rgba(255,255,255,0.08)",
-    color: "#fff",
+    color: colors.white,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     cursor: "pointer",
   },
 
   viewerImageArea: {
     position: "relative",
-    flex: "1 1 auto",
-    minHeight: "280px",
-    maxHeight: "65vh",
+    flex: 1,
+    minHeight: 0,
     display: "flex",
     alignItems: "center",
-    justifyContent:
-      "center",
+    justifyContent: "center",
     overflow: "hidden",
-    background:
-      "#020705",
+  },
+
+  zoomViewport: {
+    width: "100%",
+    height: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
   },
 
   viewerImage: {
     maxWidth: "100%",
-    maxHeight: "65vh",
-    width: "auto",
-    height: "auto",
+    maxHeight: "100%",
     objectFit: "contain",
     display: "block",
     transition:
       "transform 0.18s ease",
-    userSelect: "none",
+    transformOrigin:
+      "center center",
   },
 
-  viewerArrow: {
+  viewerArrowLeft: {
     position: "absolute",
-    top: "50%",
     zIndex: 5,
-    width: "45px",
-    height: "45px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent:
-      "center",
-    border:
-      "1px solid rgba(255,255,255,0.18)",
-    borderRadius: "50%",
-    background:
-      "rgba(0,0,0,0.58)",
-    color: "#fff",
-    cursor: "pointer",
+    left: "7px",
+    top: "50%",
     transform:
       "translateY(-50%)",
+    width: "45px",
+    height: "45px",
+    borderRadius: "50%",
+    border:
+      "1px solid rgba(255,255,255,0.18)",
+    background:
+      "rgba(0,0,0,0.55)",
+    color: colors.white,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+  },
+
+  viewerArrowRight: {
+    position: "absolute",
+    zIndex: 5,
+    right: "7px",
+    top: "50%",
+    transform:
+      "translateY(-50%)",
+    width: "45px",
+    height: "45px",
+    borderRadius: "50%",
+    border:
+      "1px solid rgba(255,255,255,0.18)",
+    background:
+      "rgba(0,0,0,0.55)",
+    color: colors.white,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
   },
 
   viewerControls: {
-    flexShrink: 0,
     display: "flex",
     alignItems: "center",
-    justifyContent:
-      "center",
+    justifyContent: "center",
     gap: "8px",
     padding:
-      "10px",
-    borderTop:
-      "1px solid rgba(255,255,255,0.08)",
+      "12px 0 8px",
   },
 
   viewerControl: {
-    width: "38px",
-    height: "38px",
+    width: "40px",
+    height: "40px",
+    borderRadius: "50%",
+    border:
+      "1px solid rgba(255,255,255,0.15)",
+    background:
+      "rgba(255,255,255,0.08)",
+    color: colors.white,
     display: "flex",
     alignItems: "center",
-    justifyContent:
-      "center",
-    border:
-      "1px solid rgba(255,255,255,0.12)",
-    borderRadius: "9px",
-    background:
-      "rgba(255,255,255,0.07)",
-    color: "#fff",
+    justifyContent: "center",
     cursor: "pointer",
   },
 
-  zoomText: {
-    minWidth: "50px",
-    textAlign: "center",
-    color:
-      "rgba(255,255,255,0.65)",
+  zoomPercentage: {
+    minWidth: "58px",
+    height: "40px",
+    padding:
+      "0 10px",
+    borderRadius: "999px",
+    border:
+      "1px solid rgba(255,255,255,0.15)",
+    background:
+      "rgba(255,255,255,0.08)",
+    color: colors.white,
     fontSize: "12px",
     fontWeight: 800,
+    cursor: "pointer",
   },
 
   viewerCounter: {
-    flexShrink: 0,
     textAlign: "center",
-    padding:
-      "0 0 8px",
     color:
-      "rgba(255,255,255,0.5)",
-    fontSize: "10px",
-    fontWeight: 800,
+      "rgba(255,255,255,0.55)",
+    fontSize: "11px",
+    paddingBottom: "8px",
   },
 
-  viewerInfo: {
-    flexShrink: 0,
+  viewerDetails: {
+    display: "flex",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: "7px 14px",
     padding:
-      "14px 16px 17px",
+      "11px 8px",
     borderTop:
-      "1px solid rgba(255,255,255,0.08)",
-    overflowY: "auto",
-  },
-
-  viewerMetadata: {
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(3,1fr)",
-    gap: "10px",
+      "1px solid rgba(255,255,255,0.1)",
+    color:
+      "rgba(255,255,255,0.8)",
+    fontSize: "12px",
   },
 
   viewerCaption: {
     margin:
-      "12px 0 0",
+      "5px 8px 8px",
+    textAlign: "center",
     color:
-      "rgba(255,255,255,0.68)",
+      "rgba(255,255,255,0.55)",
     fontSize: "13px",
     lineHeight: 1.5,
   },
 };
+
+/* ============================================================
+   BUBBLE ANIMATION
+============================================================ */
+
+if (
+  typeof document !== "undefined" &&
+  !document.getElementById(
+    "ely-anglers-animations"
+  )
+) {
+  const styleTag =
+    document.createElement("style");
+
+  styleTag.id =
+    "ely-anglers-animations";
+
+  styleTag.innerHTML = `
+    @keyframes bubbleRise {
+      0% {
+        transform: translateY(0) scale(0.65);
+        opacity: 0;
+      }
+
+      15% {
+        opacity: 0.9;
+      }
+
+      100% {
+        transform: translateY(-420px) translateX(25px) scale(1);
+        opacity: 0;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background: #F4F0E6;
+    }
+
+    button,
+    input,
+    textarea {
+      font-family: inherit;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    ::-webkit-scrollbar {
+      width: 7px;
+      height: 7px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(23,61,45,0.25);
+      border-radius: 999px;
+    }
+  `;
+
+  document.head.appendChild(styleTag);
+}
